@@ -15,6 +15,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/faiface/beep"
+	"github.com/faiface/beep/effects"
 	"github.com/faiface/beep/mp3"
 	"github.com/faiface/beep/speaker"
 )
@@ -35,6 +36,8 @@ type model struct {
 	playing     bool
 	paused      bool
 	ctrl        *beep.Ctrl
+	volume      *effects.Volume
+	volumeLevel float64
 	metadata    string
 	error       string
 	mu          sync.RWMutex
@@ -45,6 +48,7 @@ type model struct {
 }
 
 func (m *model) Init() tea.Cmd {
+	m.volumeLevel = 0.5 // Start at 50% volume
 	return nil
 }
 
@@ -103,9 +107,16 @@ func (m *model) playStream() tea.Cmd {
 			m.speakerInit = true
 		}
 
-		// Create control wrapper
-		m.ctrl = &beep.Ctrl{
+		// Create control wrapper with volume
+		m.volume = &effects.Volume{
 			Streamer: streamer,
+			Base:     2,
+			Volume:   m.volumeLevel,
+			Silent:   false,
+		}
+
+		m.ctrl = &beep.Ctrl{
+			Streamer: m.volume,
 			Paused:   false,
 		}
 
@@ -158,6 +169,29 @@ func (m *model) stopStream() {
 }
 
 func (m *model) togglePause() {
+	if m.ctrl != nil && m.speakerInit {
+		speaker.Lock()
+		m.ctrl.Paused = !m.ctrl.Paused
+		m.paused = m.ctrl.Paused
+		speaker.Unlock()
+	}
+}
+
+func (m *model) adjustVolume(delta float64) {
+	m.volumeLevel += delta
+	if m.volumeLevel > 1.0 {
+		m.volumeLevel = 1.0
+	}
+	if m.volumeLevel < 0.0 {
+		m.volumeLevel = 0.0
+	}
+
+	if m.volume != nil {
+		speaker.Lock()
+		m.volume.Volume = m.volumeLevel
+		speaker.Unlock()
+	}
+
 	if m.ctrl != nil && m.speakerInit {
 		speaker.Lock()
 		m.ctrl.Paused = !m.ctrl.Paused
@@ -268,6 +302,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.playing {
 				return m, m.fetchMetadata()
 			}
+		case "up", "+", "=":
+			m.adjustVolume(0.1) // Increase volume by 10%
+		case "down", "-":
+			m.adjustVolume(-0.1) // Decrease volume by 10%
 		}
 	case statusMsg:
 		m.playing = msg.playing
@@ -333,9 +371,13 @@ Controls:
   p/space = play/pause
   s       = stop  
   m       = refresh metadata
+  +/up    = volume up
+  -/down  = volume down
   q       = quit`)
 
-	return fmt.Sprintf("%s\n\n%s%s%s", title, status, meta, help)
+	volumeInfo := fmt.Sprintf("\nVolume: %.0f%%", m.volumeLevel*100)
+
+	return fmt.Sprintf("%s\n\n%s%s%s%s", title, status, volumeInfo, meta, help)
 }
 
 func main() {
