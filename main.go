@@ -111,8 +111,8 @@ func (m *model) playStream() tea.Cmd {
 		m.volume = &effects.Volume{
 			Streamer: streamer,
 			Base:     2,
-			Volume:   m.volumeLevel,
-			Silent:   false,
+			Volume:   (m.volumeLevel - 1.0) * 2.0, // Convert to logarithmic scale
+			Silent:   m.volumeLevel <= 0.0,
 		}
 
 		m.ctrl = &beep.Ctrl{
@@ -189,13 +189,6 @@ func (m *model) adjustVolume(delta float64) {
 	if m.volume != nil {
 		speaker.Lock()
 		m.volume.Volume = m.volumeLevel
-		speaker.Unlock()
-	}
-
-	if m.ctrl != nil && m.speakerInit {
-		speaker.Lock()
-		m.ctrl.Paused = !m.ctrl.Paused
-		m.paused = m.ctrl.Paused
 		speaker.Unlock()
 	}
 }
@@ -304,7 +297,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "up", "+", "=":
 			m.adjustVolume(0.1) // Increase volume by 10%
-		case "down", "-":
+		case "down", "-", "_":
 			m.adjustVolume(-0.1) // Decrease volume by 10%
 		}
 	case statusMsg:
@@ -363,7 +356,7 @@ func (m *model) View() string {
 
 	var meta string
 	if m.metadata != "" && m.playing {
-		meta = "\n" + metaStyle.Render("♪ Now Playing: "+m.metadata)
+		meta = "\n" + metaStyle.Render("Now Playing: "+m.metadata)
 	}
 
 	help := helpStyle.Render(`
@@ -371,8 +364,8 @@ Controls:
   p/space = play/pause
   s       = stop  
   m       = refresh metadata
-  +/up    = volume up
-  -/down  = volume down
+  +/=     = volume up
+  -/_     = volume down
   q       = quit`)
 
 	volumeInfo := fmt.Sprintf("\nVolume: %.0f%%", m.volumeLevel*100)
