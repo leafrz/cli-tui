@@ -4,3 +4,6 @@ dashboard
 
 # Go
 /vendor/
+
+# Debug
+radio_debug.log

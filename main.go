@@ -173,6 +173,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Wiedergabe läuft -> Metadaten-Polling + Animation starten.
 		m.uiPlaying = true
 		m.err = nil
+		m.metadata = "" // "Lade Puffer..." entfernen; Titel kommt per ICY nach
 		cmds := []tea.Cmd{m.fetchMetaCmd(), doTick()}
 		if !m.animTicking {
 			m.animTicking = true
