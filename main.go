@@ -117,12 +117,9 @@ func (m *model) updateUIState() {
 // --- COMMANDS ---
 func (m *model) playCmd() tea.Cmd {
 	return func() tea.Msg {
-		err := m.radioPlayer.Play(m.currentURL)
-		if err != nil {
-			// Sende Fehler an die Update-Funktion
+		if err := m.radioPlayer.Play(m.currentURL); err != nil {
 			return errorMsg{err: err}
 		}
-		// Sende Erfolg an die Update-Funktion
 		return playSuccessMsg{}
 	}
 }
@@ -173,6 +170,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Wiedergabe läuft -> Metadaten-Polling + Animation starten.
 		m.uiPlaying = true
 		m.err = nil
+		m.metadata = "" // "Lade Puffer..." entfernen; Titel kommt per ICY nach
 		cmds := []tea.Cmd{m.fetchMetaCmd(), doTick()}
 		if !m.animTicking {
 			m.animTicking = true

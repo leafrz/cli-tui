@@ -38,11 +38,16 @@ type Player struct {
 	gateThreshold float64
 
 	// metadata hält den zuletzt inline gelesenen Songtitel (ICY).
+	// Eigener Mutex! Der icyReader schreibt aus der Speaker-Callback-Goroutine
+	// (die bereits den Speaker-Lock hält). Würde das p.mu nehmen, entstünde
+	// eine Lock-Order-Inversion mit applyVolumeInternal (p.mu -> speaker).
+	metaMu   sync.RWMutex
 	metadata string
 
 	ctx      context.Context
 	cancel   context.CancelFunc
 	httpResp *http.Response
+	buffered *bufferedStreamer
 }
 
 func NewPlayer() *Player {
@@ -61,43 +66,48 @@ func (p *Player) GetStatus() (playing bool, paused bool, volume float64) {
 
 // GetMetadata gibt den zuletzt inline gelesenen Titel zurück (kein Netzwerk).
 func (p *Player) GetMetadata() string {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
+	p.metaMu.RLock()
+	defer p.metaMu.RUnlock()
 	return p.metadata
 }
 
 // setMetadata wird vom icyReader (Speaker-Goroutine) aufgerufen.
+// Nutzt bewusst metaMu, NICHT p.mu (siehe Kommentar am Feld).
 func (p *Player) setMetadata(title string) {
-	p.mu.Lock()
+	p.metaMu.Lock()
 	p.metadata = title
-	p.mu.Unlock()
+	p.metaMu.Unlock()
 }
 
 func (p *Player) Play(streamURL string) error {
+	// WICHTIG: Während der blockierenden Arbeit (HTTP-Connect + mp3.Decode)
+	// halten wir KEINEN p.mu Lock. Sonst blockiert GetStatus()/GetMetadata()
+	// aus der UI-Update-Schleife -> die komplette TUI friert ein (Tasten tot).
+	// Der Lock wird nur kurz gehalten, um den gemeinsamen Zustand zu setzen.
+
+	// 1. Vorherigen Stream sauber beenden (eigener kurzer Lock).
+	p.Stop()
+
+	// 2. Neuen Context anlegen (kurzer Lock).
 	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	// Vorherigen Stream sicher beenden
-	p.stopInternal()
-
 	p.ctx, p.cancel = context.WithCancel(context.Background())
+	ctx := p.ctx
+	localCancel := p.cancel
+	threshold := p.gateThreshold
+	p.mu.Unlock()
 
+	// 3. Blockierende Arbeit OHNE Lock --------------------------------------
 	req, err := http.NewRequest("GET", streamURL, nil)
 	if err != nil {
 		return fmt.Errorf("request creation failed: %v", err)
 	}
-
 	req.Header.Set("User-Agent", "Mozilla/5.0 (TobiRadio-Go)")
 	req.Header.Set("Connection", "keep-alive")
 	req.Header.Set("Accept", "audio/mpeg, */*")
-	// ICY-Metadaten direkt im Audio-Stream anfordern.
 	req.Header.Set("Icy-MetaData", "1")
-
-	// Wichtig: Der Body wird über p.ctx gesteuert (Abbruch via Stop()),
-	// NICHT über einen kurzlebigen Timeout-Context. Der Verbindungs-/Header-
-	// Timeout läuft stattdessen über den Transport, damit Streaming nicht
-	// nach wenigen Sekunden vom Context-Cancel abgewürgt wird.
-	req = req.WithContext(p.ctx)
+	// Body wird über ctx gesteuert (Abbruch via Stop()); Connect-/Header-
+	// Timeout läuft über den Transport, damit Streaming nicht abgewürgt wird.
+	req = req.WithContext(ctx)
 
 	client := &http.Client{
 		Transport: &http.Transport{
@@ -106,68 +116,97 @@ func (p *Player) Play(streamURL string) error {
 		},
 	}
 
+	debugf("Play: requesting %s", streamURL)
 	resp, err := client.Do(req)
 	if err != nil {
+		debugf("Play: client.Do error: %v", err)
 		return fmt.Errorf("connection failed (timeout oder ablehnung): %v", err)
 	}
 
 	contentType := resp.Header.Get("Content-Type")
+	debugf("Play: status=%s content-type=%q icy-metaint=%q",
+		resp.Status, contentType, resp.Header.Get("icy-metaint"))
 	if !strings.Contains(contentType, "audio") &&
 		!strings.Contains(contentType, "mpeg") &&
 		!strings.Contains(contentType, "ogg") {
 		resp.Body.Close()
+		debugf("Play: rejected content-type %q", contentType)
 		return fmt.Errorf("falsches Format: %s (Player kann nur MP3, keine M3U/PLS)", contentType)
 	}
 
-	p.httpResp = resp
-	p.metadata = ""
-
 	var src io.Reader = bufio.NewReader(resp.Body)
 
-	// ICY-Metadaten inline aus dem laufenden Stream lesen (keine zweite
-	// HTTP-Verbindung mehr). Nur wenn der Server icy-metaint anbietet.
+	// ICY-Metadaten inline aus dem laufenden Stream lesen.
 	if metaIntStr := resp.Header.Get("icy-metaint"); metaIntStr != "" {
 		if metaInt, e := strconv.Atoi(metaIntStr); e == nil && metaInt > 0 {
 			src = &icyReader{src: src, metaInt: metaInt, player: p}
 		}
 	}
 
+	// Decode-Watchdog: mp3.Decode blockiert, wenn der Stream KEIN echtes MP3
+	// ist (z.B. AAC/AAC+). Wir brechen den Body nach 10s ab -> Decode kehrt
+	// mit Fehler zurück. Bei Erfolg beendet decodeDone den Watchdog sofort.
+	decodeDone := make(chan struct{})
+	go func() {
+		select {
+		case <-decodeDone:
+			return
+		case <-time.After(10 * time.Second):
+			debugf("Play: decode watchdog fired (kein MP3-Stream?) -> abort")
+			localCancel()
+		}
+	}()
+
 	streamer, format, err := mp3.Decode(io.NopCloser(src))
+	close(decodeDone)
 	if err != nil {
 		resp.Body.Close()
-		return fmt.Errorf("mp3 decode failed (kein Audio-Stream?): %v", err)
+		debugf("Play: mp3.Decode error: %v", err)
+		return fmt.Errorf("mp3 decode failed (kein Audio-Stream oder kein MP3?): %v", err)
 	}
+	debugf("Play: decoded OK, stream rate=%d Hz (speaker=%d Hz)", format.SampleRate, SampleRate)
+
+	// Netzwerk/Decode vom Audio-Callback entkoppeln (siehe streamer.go).
+	// 2 Sekunden Vorauspuffer in der Quell-Sample-Rate.
+	buffered := newBufferedStreamer(streamer, int(format.SampleRate.N(2*time.Second)))
 
 	// Auf die feste Speaker-Rate resampeln, falls nötig.
-	var audioStream beep.Streamer = streamer
+	var audioStream beep.Streamer = buffered
 	if format.SampleRate != SampleRate {
-		audioStream = beep.Resample(4, format.SampleRate, SampleRate, streamer)
+		debugf("Play: resampling %d -> %d", format.SampleRate, SampleRate)
+		audioStream = beep.Resample(4, format.SampleRate, SampleRate, buffered)
 	}
 
-	// Noise Gate -> Volume -> Ctrl
 	gate := &NoiseGate{
 		Streamer:    audioStream,
-		Threshold:   p.gateThreshold,
+		Threshold:   threshold,
 		holdSamples: SampleRate.N(200 * time.Millisecond),
 	}
 
-	p.volume = &effects.Volume{
-		Streamer: gate,
-		Base:     2,
-		Volume:   0,
-		Silent:   false,
+	// 4. Zustand unter kurzem Lock setzen -----------------------------------
+	p.mu.Lock()
+	// Wurden wir zwischenzeitlich gestoppt / neuer Play gestartet?
+	if ctx.Err() != nil {
+		p.mu.Unlock()
+		buffered.Close()
+		resp.Body.Close()
+		debugf("Play: aborted before start (ctx done)")
+		return fmt.Errorf("wiedergabe abgebrochen")
 	}
+	p.httpResp = resp
+	p.buffered = buffered
+	p.volume = &effects.Volume{Streamer: gate, Base: 2, Volume: 0, Silent: false}
 	p.applyVolumeInternal()
-
 	p.ctrl = &beep.Ctrl{Streamer: p.volume, Paused: false}
-
-	speaker.Lock()
-	speaker.Clear()
-	speaker.Play(p.ctrl)
-	speaker.Unlock()
-
+	ctrl := p.ctrl
 	p.isPlaying = true
 	p.isPaused = false
+	p.mu.Unlock()
+
+	// Clear() und Play() nehmen INTERN den Speaker-Lock -> NICHT wrappen.
+	speaker.Clear()
+	speaker.Play(ctrl)
+	debugf("Play: speaker.Play issued, isPlaying=true")
 
 	return nil
 }
@@ -185,19 +224,25 @@ func (p *Player) stopInternal() {
 		p.cancel = nil
 	}
 	// Speaker ist global initialisiert -> wir leeren nur die Wiedergabe.
-	speaker.Lock()
+	// WICHTIG: speaker.Clear() nimmt INTERN den Speaker-Lock. NICHT in
+	// speaker.Lock()/Unlock() wrappen -> sonst Selbst-Deadlock (mu nicht
+	// reentrant).
 	speaker.Clear()
-	speaker.Unlock()
 
+	if p.buffered != nil {
+		p.buffered.Close()
+		p.buffered = nil
+	}
 	if p.httpResp != nil {
 		p.httpResp.Body.Close()
 		p.httpResp = nil
 	}
 	p.isPlaying = false
 	p.isPaused = false
-	p.metadata = ""
 	p.ctrl = nil
 	p.volume = nil
+	// metadata über metaMu leeren (eigener Lock, siehe Feldkommentar).
+	p.setMetadata("")
 }
 
 func (p *Player) TogglePause() bool {
