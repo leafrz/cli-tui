@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/faiface/beep"
@@ -33,6 +34,12 @@ type Player struct {
 	volumeLevel float64
 	isPlaying   bool
 	isPaused    bool
+	muted       bool
+
+	// ended wird gesetzt, wenn der Stream von selbst endet (Drop/EOF), damit
+	// die UI automatisch neu verbinden kann. Atomic, weil es aus der
+	// Speaker-Callback-Goroutine gesetzt wird.
+	ended atomic.Bool
 
 	// gateThreshold steuert das Noise Gate (0 = deaktiviert).
 	gateThreshold float64
@@ -64,6 +71,42 @@ func (p *Player) GetStatus() (playing bool, paused bool, volume float64) {
 	return p.isPlaying, p.isPaused, p.volumeLevel
 }
 
+// IsMuted gibt zurück, ob die Wiedergabe stummgeschaltet ist.
+func (p *Player) IsMuted() bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.muted
+}
+
+// ToggleMute schaltet stumm/laut und gibt den neuen Zustand zurück.
+func (p *Player) ToggleMute() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.muted = !p.muted
+	p.applyVolumeInternal()
+	return p.muted
+}
+
+// SetVolume setzt die Lautstärke absolut (0..1), z.B. zum Wiederherstellen.
+func (p *Player) SetVolume(level float64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if level < 0 {
+		level = 0
+	}
+	if level > 1 {
+		level = 1
+	}
+	p.volumeLevel = level
+	p.applyVolumeInternal()
+}
+
+// Ended meldet, ob der Stream seit dem letzten Play von selbst geendet ist
+// (Verbindungsabbruch). Die UI nutzt das für Auto-Reconnect.
+func (p *Player) Ended() bool {
+	return p.ended.Load()
+}
+
 // GetMetadata gibt den zuletzt inline gelesenen Titel zurück (kein Netzwerk).
 func (p *Player) GetMetadata() string {
 	p.metaMu.RLock()
@@ -89,6 +132,7 @@ func (p *Player) Play(streamURL string) error {
 	p.Stop()
 
 	// 2. Neuen Context anlegen (kurzer Lock).
+	p.ended.Store(false)
 	p.mu.Lock()
 	p.ctx, p.cancel = context.WithCancel(context.Background())
 	ctx := p.ctx
@@ -167,8 +211,11 @@ func (p *Player) Play(streamURL string) error {
 	debugf("Play: decoded OK, stream rate=%d Hz (speaker=%d Hz)", format.SampleRate, SampleRate)
 
 	// Netzwerk/Decode vom Audio-Callback entkoppeln (siehe streamer.go).
-	// 2 Sekunden Vorauspuffer in der Quell-Sample-Rate.
-	buffered := newBufferedStreamer(streamer, int(format.SampleRate.N(2*time.Second)))
+	// 2 Sekunden Vorauspuffer in der Quell-Sample-Rate. Bei natürlichem Ende
+	// (Stream-Drop) setzen wir das ended-Flag für den Auto-Reconnect.
+	buffered := newBufferedStreamer(streamer, int(format.SampleRate.N(2*time.Second)), func() {
+		p.ended.Store(true)
+	})
 
 	// Auf die feste Speaker-Rate resampeln, falls nötig.
 	var audioStream beep.Streamer = buffered
@@ -294,7 +341,7 @@ func (p *Player) applyVolumeInternal() {
 		speaker.Lock()
 		defer speaker.Unlock()
 
-		if p.volumeLevel <= 0.01 {
+		if p.muted || p.volumeLevel <= 0.01 {
 			p.volume.Silent = true
 		} else {
 			p.volume.Silent = false
