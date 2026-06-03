@@ -22,20 +22,23 @@ import (
 type bufferedStreamer struct {
 	inner beep.Streamer
 
-	mu     sync.Mutex
-	cond   *sync.Cond
-	buf    [][2]float64 // Ring-Puffer
-	size   int
-	head   int // Leseposition
-	count  int // gefüllte Samples
-	eof    bool
-	closed bool
-	err    error
+	mu      sync.Mutex
+	cond    *sync.Cond
+	buf     [][2]float64 // Ring-Puffer
+	size    int
+	head    int // Leseposition
+	count   int // gefüllte Samples
+	eof     bool
+	closed  bool
+	err     error
+	onEnd   func() // einmalig bei natürlichem Stream-Ende
+	endOnce sync.Once
 }
 
 // newBufferedStreamer startet sofort die Vorausles-Goroutine.
 // capacity = Puffergröße in Samples (z.B. SampleRate.N(2*time.Second)).
-func newBufferedStreamer(inner beep.Streamer, capacity int) *bufferedStreamer {
+// onEnd wird einmal aufgerufen, wenn der Stream von selbst endet (Drop/EOF).
+func newBufferedStreamer(inner beep.Streamer, capacity int, onEnd func()) *bufferedStreamer {
 	if capacity < 1 {
 		capacity = 1
 	}
@@ -43,10 +46,18 @@ func newBufferedStreamer(inner beep.Streamer, capacity int) *bufferedStreamer {
 		inner: inner,
 		buf:   make([][2]float64, capacity),
 		size:  capacity,
+		onEnd: onEnd,
 	}
 	b.cond = sync.NewCond(&b.mu)
 	go b.fill()
 	return b
+}
+
+// signalEnd ruft onEnd genau einmal auf (außerhalb von Locks bedenkenlos).
+func (b *bufferedStreamer) signalEnd() {
+	if b.onEnd != nil {
+		b.endOnce.Do(b.onEnd)
+	}
 }
 
 // fill läuft im Hintergrund und darf blockieren (es ist NICHT der Audio-Thread).
@@ -98,6 +109,7 @@ func (b *bufferedStreamer) Stream(samples [][2]float64) (n int, ok bool) {
 		} else if b.eof {
 			// Quelle zu Ende und Puffer leer -> Wiedergabe beenden.
 			b.cond.Broadcast()
+			b.signalEnd()
 			return i, i > 0
 		} else {
 			// Unterlauf: Stille ausgeben statt zu blockieren.

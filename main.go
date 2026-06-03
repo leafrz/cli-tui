@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -36,6 +37,12 @@ type errorMsg struct {
 }
 type playSuccessMsg struct{}
 
+// searchResultMsg liefert die Ergebnisse einer asynchronen Suche.
+type searchResultMsg struct {
+	items []list.Item
+	title string
+}
+
 // animMsg treibt die Equalizer-Animation an.
 type animMsg time.Time
 
@@ -45,6 +52,28 @@ func animCmd() tea.Cmd {
 	})
 }
 
+// searchCmd führt die Suche asynchron aus (blockiert die UI nicht).
+func (m *model) searchCmd(query string) tea.Cmd {
+	favs := m.favorites
+	return func() tea.Msg {
+		items := SearchStations(query)
+		markFavorites(items, favs)
+		title := "ergebnisse: " + query
+		if query == "" {
+			title = "top sender DE"
+		}
+		return searchResultMsg{items: items, title: title}
+	}
+}
+
+// saveStateCmd persistiert den Zustand asynchron (Fehler werden ignoriert).
+func saveStateCmd(s persistedState) tea.Cmd {
+	return func() tea.Msg {
+		_ = saveState(s)
+		return nil
+	}
+}
+
 // --- MODEL ---
 type model struct {
 	radioPlayer *radio.Player
@@ -52,6 +81,7 @@ type model struct {
 	// UI Komponenten
 	list      list.Model
 	textInput textinput.Model
+	spinner   spinner.Model
 
 	state  sessionState
 	width  int
@@ -64,15 +94,60 @@ type model struct {
 	uiPlaying  bool
 	uiPaused   bool
 	uiVolume   float64
+	uiMuted    bool
 
 	// Animation
 	animFrame   int
 	animTicking bool
+
+	// QoL
+	connecting  bool      // verbindet gerade -> Spinner statt EQ
+	searching   bool      // Suche läuft -> Spinner
+	showHelp    bool      // Hilfe-Overlay
+	favorites   []station // persistente Favoriten
+	lastStation *station  // zuletzt gespielter Sender (für Resume)
+	sleepUntil  time.Time // Sleep-Timer Ziel (zero = aus)
+	sleepStep   int       // 0=aus, 1=15m, 2=30m, 3=60m
+}
+
+// sleepMinutes ordnet sleepStep eine Dauer zu.
+var sleepMinutes = []int{0, 15, 30, 60}
+
+// cycleSleep schaltet den Sleep-Timer weiter (aus -> 15 -> 30 -> 60 -> aus).
+func (m *model) cycleSleep() {
+	m.sleepStep = (m.sleepStep + 1) % len(sleepMinutes)
+	min := sleepMinutes[m.sleepStep]
+	if min == 0 {
+		m.sleepUntil = time.Time{}
+		return
+	}
+	m.sleepUntil = time.Now().Add(time.Duration(min) * time.Minute)
+}
+
+// refreshFavMarks markiert die aktuellen Listen-Items neu (Selektion bleibt).
+func (m *model) refreshFavMarks() {
+	items := m.list.Items()
+	markFavorites(items, m.favorites)
+	idx := m.list.Index()
+	m.list.SetItems(items)
+	m.list.Select(idx)
 }
 
 func (m *model) Init() tea.Cmd {
 	m.radioPlayer = radio.NewPlayer()
+
+	// Persistenten Zustand laden (Favoriten, letzte Lautstärke, letzter Sender).
+	st := loadState()
+	m.favorites = st.Favorites
+	m.lastStation = st.LastStation
+	m.radioPlayer.SetVolume(st.LastVolume)
 	m.updateUIState()
+
+	// Spinner (Verbinden/Suchen)
+	sp := spinner.New()
+	sp.Spinner = spinner.Dot
+	sp.Style = lipgloss.NewStyle().Foreground(colTeal)
+	m.spinner = sp
 
 	// 1. Text Input konfigurieren
 	ti := textinput.New()
@@ -112,6 +187,25 @@ func (m *model) Init() tea.Cmd {
 
 func (m *model) updateUIState() {
 	m.uiPlaying, m.uiPaused, m.uiVolume = m.radioPlayer.GetStatus()
+	m.uiMuted = m.radioPlayer.IsMuted()
+}
+
+// startPlay startet die Wiedergabe der currentURL inkl. Connecting-Spinner.
+func (m *model) startPlay() tea.Cmd {
+	m.state = statePlayer
+	m.err = nil
+	m.connecting = true
+	m.metadata = ""
+	return tea.Batch(m.playCmd(), m.spinner.Tick)
+}
+
+// volume / sleep helpers
+func (m *model) persistCmd() tea.Cmd {
+	return saveStateCmd(persistedState{
+		Favorites:   m.favorites,
+		LastVolume:  m.uiVolume,
+		LastStation: m.lastStation,
+	})
 }
 
 // --- COMMANDS ---
@@ -155,28 +249,50 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.list.SetSize(msg.Width-h, msg.Height-v)
 
 	case tea.KeyMsg:
-		if msg.String() == "ctrl+c" {
+		key := msg.String()
+		if key == "ctrl+c" {
 			m.radioPlayer.Stop()
-			return m, tea.Quit
+			return m, tea.Sequence(m.persistCmd(), tea.Quit)
+		}
+		// Hilfe-Overlay schluckt alle Tasten, solange es offen ist.
+		if m.showHelp {
+			if key == "esc" || key == "?" || key == "q" {
+				m.showHelp = false
+			}
+			return m, nil
+		}
+		// '?' öffnet die Hilfe (nicht im Such-Eingabefeld, dort ist es Text).
+		if key == "?" && m.state != stateSearch {
+			m.showHelp = true
+			return m, nil
 		}
 
-	case tickMsg:
-		if m.uiPlaying && m.state == statePlayer {
-			return m, tea.Batch(m.fetchMetaCmd(), doTick())
+	case spinner.TickMsg:
+		if m.connecting || m.searching {
+			m.spinner, cmd = m.spinner.Update(msg)
+			return m, cmd
 		}
+		return m, nil
+
+	case searchResultMsg:
+		m.searching = false
+		m.list.SetItems(msg.items)
+		m.list.Title = msg.title
+		m.state = stateList
 		return m, nil
 
 	case playSuccessMsg:
 		// Wiedergabe läuft -> Metadaten-Polling + Animation starten.
+		m.connecting = false
 		m.uiPlaying = true
 		m.err = nil
-		m.metadata = "" // "Lade Puffer..." entfernen; Titel kommt per ICY nach
-		cmds := []tea.Cmd{m.fetchMetaCmd(), doTick()}
+		m.metadata = ""
+		batch := []tea.Cmd{m.fetchMetaCmd(), doTick()}
 		if !m.animTicking {
 			m.animTicking = true
-			cmds = append(cmds, animCmd())
+			batch = append(batch, animCmd())
 		}
-		return m, tea.Batch(cmds...)
+		return m, tea.Batch(batch...)
 
 	case animMsg:
 		m.animFrame++
@@ -186,54 +302,62 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.animTicking = false
 		return m, nil
 
+	case tickMsg:
+		// Sleep-Timer abgelaufen?
+		if !m.sleepUntil.IsZero() && time.Now().After(m.sleepUntil) {
+			m.sleepUntil = time.Time{}
+			m.sleepStep = 0
+			m.radioPlayer.Stop()
+			m.uiPlaying = false
+			m.metadata = ""
+			m.state = stateList
+			return m, nil
+		}
+		// Auto-Reconnect bei Stream-Abbruch.
+		if m.uiPlaying && !m.uiPaused && m.state == statePlayer && m.radioPlayer.Ended() {
+			m.connecting = true
+			m.metadata = ""
+			return m, tea.Batch(m.playCmd(), m.spinner.Tick, doTick())
+		}
+		if m.uiPlaying && m.state == statePlayer {
+			return m, tea.Batch(m.fetchMetaCmd(), doTick())
+		}
+		return m, nil
+
 	case metadataMsg:
-		// Wir überschreiben den Metadaten-String.
-		// Wenn title aus fetchMetaCmd leer war (z.B. bei Werbung), wird m.metadata geleert.
 		if msg.metadata != "" {
 			m.metadata = msg.metadata
-		} else {
-			// Optionale Logik: Wenn leer, zeige "Werbung" oder "..." an, anstatt den letzten Songnamen zu behalten.
-			// Fürs Erste: Wir lassen den alten Titel stehen, damit bei Werbung nicht ständig "..." blinkt.
-			// Wenn du den Titel auf jeden Fall löschen willst, nutze: m.metadata = ""
 		}
 
 	case errorMsg:
+		m.connecting = false
 		m.err = msg.err
 		m.uiPlaying = false
-
-		// Sicherstellen, dass der Player gestoppt ist
 		m.radioPlayer.Stop()
 		m.metadata = ""
-
-		// 🛑 DIESE ZEILE LÖSCHEN ODER AUSKOMMENTIEREN:
-		// m.state = stateList
-
-		// Stattdessen nur Pausieren, damit der rote Fehlertext sichtbar bleibt:
 		m.uiPaused = true
 	}
-	// --- STATE MACHINE ---
 
+	// --- STATE MACHINE ---
 	switch m.state {
 
 	// 1. SUCH-MODUS
 	case stateSearch:
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch msg.String() {
+		if km, ok := msg.(tea.KeyMsg); ok {
+			switch km.String() {
 			case "enter":
-				query := m.textInput.Value()
-
-				// Blockiert kurz, um API-Ergebnisse zu holen
-				items := SearchStations(query)
-
-				m.list.SetItems(items)
-				m.list.Title = "Ergebnisse für: " + query
-				if query == "" {
-					m.list.Title = "Top Sender DE"
-				}
-
+				m.searching = true
+				return m, tea.Batch(m.searchCmd(m.textInput.Value()), m.spinner.Tick)
+			case "ctrl+f":
+				m.list.SetItems(favoritesAsItems(m.favorites))
+				m.list.Title = "★ favoriten"
 				m.state = stateList
 				return m, nil
+			case "ctrl+r":
+				if m.lastStation != nil {
+					m.currentURL = m.lastStation.StreamURL
+					return m, m.startPlay()
+				}
 			}
 		}
 		m.textInput, cmd = m.textInput.Update(msg)
@@ -241,25 +365,36 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// 2. LISTEN-MODUS
 	case stateList:
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch msg.String() {
+		if km, ok := msg.(tea.KeyMsg); ok && !m.list.SettingFilter() {
+			switch km.String() {
 			case "esc":
 				m.state = stateSearch
 				m.textInput.Focus()
 				return m, textinput.Blink
 
-			case "enter":
-				selectedItem := m.list.SelectedItem()
-				if selectedItem != nil {
-					s := selectedItem.(station)
-					m.currentURL = s.StreamURL // <-- Korrekt: Großgeschrieben
+			case "f":
+				if it := m.list.SelectedItem(); it != nil {
+					if s, ok := it.(station); ok && s.StreamURL != "" {
+						m.favorites, _ = toggleFavorite(m.favorites, s)
+						m.refreshFavMarks()
+						return m, m.persistCmd()
+					}
+				}
 
-					m.state = statePlayer
-					m.err = nil
-					m.metadata = "Lade Puffer..."
-					m.uiPlaying = true
-					return m, m.playCmd()
+			case "ctrl+f":
+				m.list.SetItems(favoritesAsItems(m.favorites))
+				m.list.Title = "★ favoriten"
+				return m, nil
+
+			case "enter":
+				if it := m.list.SelectedItem(); it != nil {
+					if s, ok := it.(station); ok && s.StreamURL != "" {
+						m.currentURL = s.StreamURL
+						ls := s
+						ls.Favorite = false
+						m.lastStation = &ls
+						return m, tea.Batch(m.startPlay(), m.persistCmd())
+					}
 				}
 			}
 		}
@@ -268,12 +403,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// 3. PLAYER-MODUS
 	case statePlayer:
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch msg.String() {
+		if km, ok := msg.(tea.KeyMsg); ok {
+			switch km.String() {
 			case "esc", "q", "backspace":
 				m.radioPlayer.Stop()
 				m.uiPlaying = false
+				m.connecting = false
 				m.metadata = ""
 				m.state = stateList
 				return m, nil
@@ -282,15 +417,29 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.uiPlaying {
 					m.radioPlayer.TogglePause()
 				} else {
-					m.err = nil
-					m.uiPlaying = true
-					return m, m.playCmd()
+					return m, m.startPlay()
 				}
+
 			case "s":
 				m.radioPlayer.Stop()
+				m.uiPlaying = false
 				m.metadata = ""
+
+			case "m":
+				m.radioPlayer.ToggleMute()
+
+			case "t":
+				m.cycleSleep()
+
+			case "f":
+				if m.lastStation != nil {
+					m.favorites, _ = toggleFavorite(m.favorites, *m.lastStation)
+					return m, m.persistCmd()
+				}
+
 			case "+", "=":
 				m.radioPlayer.AdjustVolume(0.1)
+
 			case "-", "_":
 				m.radioPlayer.AdjustVolume(-0.1)
 			}
@@ -315,16 +464,28 @@ func (m *model) View() string {
 	// 4 = Puffer/Margins + 2 = Die ungefähre Höhe von Header/Footer ohne Content-Margin
 	contentHeight := m.height - lipgloss.Height(m.headerView()) - lipgloss.Height(m.footerView()) - 4
 
-	if m.state == stateSearch {
-		// Such-Ansicht: zentrierte Karte
-		prompt := labelStyle.Render("find a station or a mood")
-		input := lipgloss.NewStyle().Width(40).Render(m.textInput.View())
-		help := helpStyle.Render("enter search   ·   leave empty for top DE   ·   esc quit")
+	if m.showHelp {
+		content = lipgloss.Place(m.width, contentHeight,
+			lipgloss.Center, lipgloss.Center, m.helpView())
 
-		searchCard := cardStyle.Render(
-			lipgloss.JoinVertical(lipgloss.Left, prompt, "", input),
-		)
-		searchContent := lipgloss.JoinVertical(lipgloss.Center, searchCard, "", help)
+	} else if m.state == stateSearch {
+		// Such-Ansicht: zentrierte Karte
+		var card string
+		if m.searching {
+			card = cardStyle.Render(m.spinner.View() + " " + labelStyle.Render("searching…"))
+		} else {
+			prompt := labelStyle.Render("find a station or a mood")
+			input := lipgloss.NewStyle().Width(40).Render(m.textInput.View())
+			card = cardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, prompt, "", input))
+		}
+
+		help := helpStyle.Render("enter search   ·   ⌃f favorites   ·   ? help   ·   esc quit")
+		parts := []string{card, "", help}
+		if m.lastStation != nil {
+			resume := dimStyle.Render("⌃r resume ") + labelStyle.Render(m.lastStation.Name)
+			parts = append(parts, resume)
+		}
+		searchContent := lipgloss.JoinVertical(lipgloss.Center, parts...)
 
 		content = lipgloss.Place(m.width, contentHeight,
 			lipgloss.Center, lipgloss.Center, searchContent)
@@ -362,60 +523,113 @@ func (m *model) playerViewRender() string {
 		stationName = item.(station).Name
 	}
 
+	center := lipgloss.NewStyle().Width(cardInner).Align(lipgloss.Center)
+
 	// Statuszeile mit kleinem Indikator
 	var status string
 	switch {
 	case m.err != nil:
 		status = lipgloss.NewStyle().Foreground(colError).Render("✕ " + m.err.Error())
+	case m.connecting:
+		status = lipgloss.NewStyle().Foreground(colTeal).Render(m.spinner.View() + " connecting…")
 	case m.uiPaused:
 		status = lipgloss.NewStyle().Foreground(colPeach).Render("❚❚ paused")
 	default:
 		status = lipgloss.NewStyle().Foreground(colTeal).Render("▶ streaming")
 	}
 
-	// Equalizer (mittig)
-	eq := renderEQ(m.animFrame, 16, 5, m.uiPaused || m.err != nil)
-	eqBlock := lipgloss.NewStyle().Width(cardInner).Align(lipgloss.Center).Render(eq)
+	// Mitte: Spinner beim Verbinden, sonst Equalizer.
+	var midBlock string
+	if m.connecting {
+		midBlock = center.Render(lipgloss.NewStyle().Foreground(colMauve).Render(
+			m.spinner.View() + " " + m.spinner.View() + " " + m.spinner.View()))
+		// Höhe an EQ angleichen
+		midBlock = lipgloss.NewStyle().Height(5).Render(midBlock)
+	} else {
+		eq := renderEQ(m.animFrame, 16, 5, m.uiPaused || m.err != nil)
+		midBlock = center.Render(eq)
+	}
 
 	// Now Playing
 	nowPlaying := dimStyle.Render("— stille —")
 	if m.metadata != "" {
-		track := m.metadata
-		nowPlaying = labelStyle.Render("♫ ") + nowPlayingStyle.Render(track)
+		nowPlaying = labelStyle.Render("♫ ") + nowPlayingStyle.Render(m.metadata)
 	}
-	nowPlaying = lipgloss.NewStyle().Width(cardInner).Align(lipgloss.Center).Render(nowPlaying)
+	nowPlaying = center.Render(nowPlaying)
 
-	// Volume
-	volBar := renderVolumeBar(m.uiVolume, 24)
-	volLine := lipgloss.JoinHorizontal(lipgloss.Left,
-		labelStyle.Render("vol "),
-		volBar,
-		dimStyle.Render(fmt.Sprintf(" %3.0f%%", m.uiVolume*100)),
-	)
-	volLine = lipgloss.NewStyle().Width(cardInner).Align(lipgloss.Center).Render(volLine)
+	// Volume (oder MUTED)
+	var volLine string
+	if m.uiMuted {
+		volLine = center.Render(lipgloss.NewStyle().Foreground(colPeach).Render("🔇 muted"))
+	} else {
+		bar := renderVolumeBar(m.uiVolume, 24)
+		volLine = center.Render(lipgloss.JoinHorizontal(lipgloss.Left,
+			labelStyle.Render("vol "),
+			bar,
+			dimStyle.Render(fmt.Sprintf(" %3.0f%%", m.uiVolume*100)),
+		))
+	}
 
-	// Titelzeile in der Karte
-	title := lipgloss.NewStyle().Width(cardInner).Align(lipgloss.Center).Render(
-		stationNameStyle.Render(stationName),
-	)
-	statusLine := lipgloss.NewStyle().Width(cardInner).Align(lipgloss.Center).Render(status)
+	title := center.Render(stationNameStyle.Render(stationName))
+	statusLine := center.Render(status)
+
+	rows := []string{title, statusLine, "", midBlock, "", nowPlaying, "", volLine}
+
+	// Sleep-Timer Hinweis
+	if !m.sleepUntil.IsZero() {
+		rem := time.Until(m.sleepUntil).Round(time.Minute)
+		rows = append(rows, "", center.Render(
+			lipgloss.NewStyle().Foreground(colPurple).Render(
+				fmt.Sprintf("☾ sleep in %dm", int(rem.Minutes())))))
+	}
+
+	card := cardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+
+	help := helpStyle.Render("space play/pause · +/− vol · m mute · t sleep · f fav · ? help · esc back")
+
+	return lipgloss.JoinVertical(lipgloss.Center, card, "", help)
+}
+
+// helpView rendert ein Tasten-Cheatsheet als zentrierte Karte.
+func (m *model) helpView() string {
+	key := lipgloss.NewStyle().Foreground(colPeach).Bold(true)
+	desc := lipgloss.NewStyle().Foreground(colCream)
+	head := lipgloss.NewStyle().Foreground(colMauve).Bold(true)
+
+	row := func(k, d string) string {
+		return lipgloss.JoinHorizontal(lipgloss.Left,
+			key.Width(12).Render(k), desc.Render(d))
+	}
 
 	body := lipgloss.JoinVertical(lipgloss.Left,
-		title,
-		statusLine,
+		head.Render("search"),
+		row("enter", "search (empty = top DE)"),
+		row("⌃f", "show favorites"),
+		row("⌃r", "resume last station"),
 		"",
-		eqBlock,
+		head.Render("list"),
+		row("↑/↓", "navigate"),
+		row("/", "filter"),
+		row("f", "toggle favorite"),
+		row("enter", "play station"),
+		row("esc", "back to search"),
 		"",
-		nowPlaying,
+		head.Render("player"),
+		row("space", "play / pause"),
+		row("+ / −", "volume"),
+		row("m", "mute"),
+		row("t", "sleep timer (15/30/60)"),
+		row("f", "favorite this station"),
+		row("esc / q", "back to list"),
 		"",
-		volLine,
+		head.Render("global"),
+		row("?", "toggle this help"),
+		row("⌃c", "quit"),
 	)
 
 	card := cardStyle.Render(body)
-
-	help := helpStyle.Render("space play/pause   ·   +/− volume   ·   esc back")
-
-	return lipgloss.JoinVertical(lipgloss.Center, card, "", help)
+	hint := helpStyle.Render("press ? or esc to close")
+	return lipgloss.JoinVertical(lipgloss.Center, card, "", hint)
 }
 
 // Zeigt den fixen Header an (Uhrzeit, App-Titel)
@@ -462,13 +676,18 @@ func (m *model) footerView() string {
 		statusText = dimStyle.Render("radio ready")
 	}
 
-	// 2. Volume Bar (kompakt)
-	bar := renderVolumeBar(m.uiVolume, 12)
-	volumeInfo := lipgloss.JoinHorizontal(lipgloss.Left,
-		dimStyle.Render("vol "),
-		bar,
-		dimStyle.Render(fmt.Sprintf(" %3.0f%%", m.uiVolume*100)),
-	)
+	// 2. Volume Bar (kompakt) bzw. Muted-Hinweis
+	var volumeInfo string
+	if m.uiMuted {
+		volumeInfo = lipgloss.NewStyle().Foreground(colPeach).Render("🔇 muted")
+	} else {
+		bar := renderVolumeBar(m.uiVolume, 12)
+		volumeInfo = lipgloss.JoinHorizontal(lipgloss.Left,
+			dimStyle.Render("vol "),
+			bar,
+			dimStyle.Render(fmt.Sprintf(" %3.0f%%", m.uiVolume*100)),
+		)
+	}
 
 	rule := horizontalRule(m.width - 2)
 

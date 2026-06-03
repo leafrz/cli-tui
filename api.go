@@ -16,10 +16,19 @@ type station struct {
 	StreamURL string `json:"url_resolved"`
 	Tags      string `json:"tags"` // <--- UMBENANNT von 'Description' zu 'Tags'
 	Country   string `json:"country"`
+
+	// Favorite ist ein transienter UI-Marker (nicht aus der API, nicht doppelt
+	// in der Favoritenliste gespeichert).
+	Favorite bool `json:"-"`
 }
 
 // Interface Implementierung für die Liste
-func (s station) Title() string { return s.Name }
+func (s station) Title() string {
+	if s.Favorite {
+		return "★ " + s.Name
+	}
+	return s.Name
+}
 
 // Hier gab es den Konflikt: Die Methode heißt Description, also darf das Feld oben nicht so heißen.
 func (s station) Description() string {
