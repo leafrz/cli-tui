@@ -1,0 +1,6 @@
+# Build artifacts
+*.exe
+dashboard
+
+# Go
+/vendor/
