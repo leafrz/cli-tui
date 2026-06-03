@@ -47,6 +47,7 @@ type Player struct {
 	ctx      context.Context
 	cancel   context.CancelFunc
 	httpResp *http.Response
+	buffered *bufferedStreamer
 }
 
 func NewPlayer() *Player {
@@ -165,11 +166,15 @@ func (p *Player) Play(streamURL string) error {
 	}
 	debugf("Play: decoded OK, stream rate=%d Hz (speaker=%d Hz)", format.SampleRate, SampleRate)
 
+	// Netzwerk/Decode vom Audio-Callback entkoppeln (siehe streamer.go).
+	// 2 Sekunden Vorauspuffer in der Quell-Sample-Rate.
+	buffered := newBufferedStreamer(streamer, int(format.SampleRate.N(2*time.Second)))
+
 	// Auf die feste Speaker-Rate resampeln, falls nötig.
-	var audioStream beep.Streamer = streamer
+	var audioStream beep.Streamer = buffered
 	if format.SampleRate != SampleRate {
 		debugf("Play: resampling %d -> %d", format.SampleRate, SampleRate)
-		audioStream = beep.Resample(4, format.SampleRate, SampleRate, streamer)
+		audioStream = beep.Resample(4, format.SampleRate, SampleRate, buffered)
 	}
 
 	gate := &NoiseGate{
@@ -183,11 +188,13 @@ func (p *Player) Play(streamURL string) error {
 	// Wurden wir zwischenzeitlich gestoppt / neuer Play gestartet?
 	if ctx.Err() != nil {
 		p.mu.Unlock()
+		buffered.Close()
 		resp.Body.Close()
 		debugf("Play: aborted before start (ctx done)")
 		return fmt.Errorf("wiedergabe abgebrochen")
 	}
 	p.httpResp = resp
+	p.buffered = buffered
 	p.volume = &effects.Volume{Streamer: gate, Base: 2, Volume: 0, Silent: false}
 	p.applyVolumeInternal()
 	p.ctrl = &beep.Ctrl{Streamer: p.volume, Paused: false}
@@ -196,10 +203,9 @@ func (p *Player) Play(streamURL string) error {
 	p.isPaused = false
 	p.mu.Unlock()
 
-	speaker.Lock()
+	// Clear() und Play() nehmen INTERN den Speaker-Lock -> NICHT wrappen.
 	speaker.Clear()
 	speaker.Play(ctrl)
-	speaker.Unlock()
 	debugf("Play: speaker.Play issued, isPlaying=true")
 
 	return nil
@@ -218,10 +224,15 @@ func (p *Player) stopInternal() {
 		p.cancel = nil
 	}
 	// Speaker ist global initialisiert -> wir leeren nur die Wiedergabe.
-	speaker.Lock()
+	// WICHTIG: speaker.Clear() nimmt INTERN den Speaker-Lock. NICHT in
+	// speaker.Lock()/Unlock() wrappen -> sonst Selbst-Deadlock (mu nicht
+	// reentrant).
 	speaker.Clear()
-	speaker.Unlock()
 
+	if p.buffered != nil {
+		p.buffered.Close()
+		p.buffered = nil
+	}
 	if p.httpResp != nil {
 		p.httpResp.Body.Close()
 		p.httpResp = nil

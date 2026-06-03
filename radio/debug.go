@@ -10,7 +10,10 @@ import (
 // Wir loggen NICHT auf stdout, weil das die TUI-Darstellung zerstören würde.
 var debugEnabled = os.Getenv("RADIO_DEBUG") != ""
 
-// debugf schreibt eine Zeile nach radio_debug.log (nur wenn RADIO_DEBUG gesetzt).
+// Debugf ist die exportierte Variante, damit auch package main loggen kann.
+func Debugf(format string, args ...any) { debugf(format, args...) }
+
+// debugf schreibt eine Zeile nach radio_debug.log.
 func debugf(format string, args ...any) {
 	if !debugEnabled {
 		return

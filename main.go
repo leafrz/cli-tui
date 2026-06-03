@@ -117,12 +117,9 @@ func (m *model) updateUIState() {
 // --- COMMANDS ---
 func (m *model) playCmd() tea.Cmd {
 	return func() tea.Msg {
-		err := m.radioPlayer.Play(m.currentURL)
-		if err != nil {
-			// Sende Fehler an die Update-Funktion
+		if err := m.radioPlayer.Play(m.currentURL); err != nil {
 			return errorMsg{err: err}
 		}
-		// Sende Erfolg an die Update-Funktion
 		return playSuccessMsg{}
 	}
 }
