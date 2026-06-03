@@ -365,6 +365,9 @@ func (m *radioModule) Update(msg tea.Msg) (Module, tea.Cmd) {
 	case stateSearch:
 		if km, ok := msg.(tea.KeyMsg); ok {
 			switch km.String() {
+			case "esc":
+				// Zurück zum Dashboard-Startmenü.
+				return m, goToLauncher
 			case "enter":
 				m.searching = true
 				return m, tea.Batch(m.searchCmd(m.textInput.Value()), m.spinner.Tick)
@@ -461,9 +464,13 @@ func (m *radioModule) Update(msg tea.Msg) (Module, tea.Cmd) {
 
 			case "+", "=":
 				m.radioPlayer.AdjustVolume(0.1)
+				m.updateUIState()
+				return m, m.persistCmd()
 
 			case "-", "_":
 				m.radioPlayer.AdjustVolume(-0.1)
+				m.updateUIState()
+				return m, m.persistCmd()
 			}
 		}
 	}
@@ -515,7 +522,7 @@ func (m *radioModule) View(width, height int) string {
 			card = cardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, prompt, "", input))
 		}
 
-		help := helpStyle.Render("enter: search   ·   ctrl+f: favorites   ·   esc: quit")
+		help := helpStyle.Render("enter: search   ·   ctrl+f: favorites   ·   esc: dashboard")
 		parts := []string{card, "", help}
 		if m.lastStation != nil {
 			resume := dimStyle.Render("ctrl+r: resume ") + labelStyle.Render(m.lastStation.Name)
@@ -636,6 +643,7 @@ func (m *radioModule) helpView() string {
 		row("enter", "search (empty = top DE)"),
 		row("ctrl+f", "show favorites"),
 		row("ctrl+r", "resume last station"),
+		row("esc", "back to dashboard"),
 		"",
 		head.Render("list"),
 		row("↑/↓", "navigate"),
