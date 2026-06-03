@@ -24,12 +24,10 @@ var (
 
 // --- Shared styles ---------------------------------------------------------
 var (
-	appTitleStyle = lipgloss.NewStyle().Bold(true).Foreground(colMauve)
-	tagStyle      = lipgloss.NewStyle().Foreground(colPurple).Italic(true)
-	clockStyle    = lipgloss.NewStyle().Foreground(colDim)
-	helpStyle     = lipgloss.NewStyle().Foreground(colDim)
-	dimStyle      = lipgloss.NewStyle().Foreground(colDim)
-	labelStyle    = lipgloss.NewStyle().Foreground(colPurple)
+	clockStyle = lipgloss.NewStyle().Foreground(colDim)
+	helpStyle  = lipgloss.NewStyle().Foreground(colDim)
+	dimStyle   = lipgloss.NewStyle().Foreground(colDim)
+	labelStyle = lipgloss.NewStyle().Foreground(colPurple)
 
 	cardStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).

@@ -9,9 +9,10 @@ import (
 
 // persistedState ist der auf Platte gespeicherte Zustand.
 type persistedState struct {
-	Favorites   []station `json:"favorites"`
-	LastVolume  float64   `json:"last_volume"`
-	LastStation *station  `json:"last_station,omitempty"`
+	Favorites   []station    `json:"favorites"`
+	LastVolume  float64      `json:"last_volume"`
+	LastStation *station     `json:"last_station,omitempty"`
+	Header      headerConfig `json:"header"`
 }
 
 var storeMu sync.Mutex
@@ -29,7 +30,7 @@ func statePath() (string, error) {
 // loadState lädt den persistenten Zustand. Fehlt die Datei, gibt es einen
 // sinnvollen Default zurück (kein Fehler).
 func loadState() persistedState {
-	def := persistedState{LastVolume: 1.0}
+	def := persistedState{LastVolume: 1.0, Header: defaultHeaderConfig()}
 
 	path, err := statePath()
 	if err != nil {
@@ -46,6 +47,7 @@ func loadState() persistedState {
 	if s.LastVolume <= 0 {
 		s.LastVolume = 1.0
 	}
+	s.Header = s.Header.withDefaults()
 	return s
 }
 
@@ -53,7 +55,11 @@ func loadState() persistedState {
 func saveState(s persistedState) error {
 	storeMu.Lock()
 	defer storeMu.Unlock()
+	return saveStateUnlocked(s)
+}
 
+// saveStateUnlocked schreibt ohne Lock (Aufrufer muss storeMu halten).
+func saveStateUnlocked(s persistedState) error {
 	path, err := statePath()
 	if err != nil {
 		return err
@@ -72,4 +78,16 @@ func saveState(s persistedState) error {
 		return err
 	}
 	return os.Rename(tmp, path)
+}
+
+// updateState lädt den aktuellen Zustand, wendet mut an und speichert wieder.
+// So überschreibt z.B. das Speichern der Favoriten nicht die Header-Config
+// (und umgekehrt). Läuft komplett unter storeMu.
+func updateState(mut func(*persistedState)) error {
+	storeMu.Lock()
+	defer storeMu.Unlock()
+
+	s := loadState() // liest Datei + füllt Defaults (kein Lock im Innern)
+	mut(&s)
+	return saveStateUnlocked(s)
 }
