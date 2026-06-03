@@ -44,6 +44,8 @@ type rootModel struct {
 	width  int
 	height int
 
+	showHelp bool // globale Hilfe (nur im Launcher)
+
 	header      headerConfig
 	headerFrame int
 
@@ -153,7 +155,16 @@ func (r *rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// 3) Launcher-Navigation (kein aktives Modul).
 		if r.inLauncher() {
+			// Globale Hilfe hat Vorrang, solange offen.
+			if r.showHelp {
+				if key == "esc" || key == "?" || key == "q" {
+					r.showHelp = false
+				}
+				return r, nil
+			}
 			switch key {
+			case "?":
+				r.showHelp = true
 			case "ctrl+c", "q":
 				return r, tea.Quit
 			case "up", "k":
@@ -196,6 +207,9 @@ func (r *rootModel) View() string {
 	case r.editing:
 		content = lipgloss.Place(r.width, contentH, lipgloss.Center, lipgloss.Center,
 			r.headerEditorView())
+	case r.inLauncher() && r.showHelp:
+		content = lipgloss.Place(r.width, contentH, lipgloss.Center, lipgloss.Center,
+			globalHelpView())
 	case r.inLauncher():
 		content = r.launcherView(contentH)
 	default:
@@ -226,11 +240,30 @@ func (r *rootModel) launcherView(contentH int) string {
 	}
 
 	card := cardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
-	help := helpStyle.Render(
-		"↑/↓: select   ·   enter: open   ·   ctrl+t: header   ·   ctrl+e: edit   ·   ctrl+c: quit")
+	help := helpStyle.Render("↑/↓: select   ·   enter: open   ·   ?: help   ·   ctrl+c: quit")
 	menu := lipgloss.JoinVertical(lipgloss.Center, card, "", help)
 
 	return lipgloss.Place(r.width, contentH, lipgloss.Center, lipgloss.Center, menu)
+}
+
+// globalHelpView rendert die GLOBALE Hilfe (dashboard-weite Befehle).
+func globalHelpView() string {
+	sections := []helpSection{
+		{title: "navigation", rows: [][2]string{
+			{"↑/↓", "select module"},
+			{"enter", "open module"},
+			{"esc", "back to dashboard (from a module)"},
+		}},
+		{title: "header", rows: [][2]string{
+			{"ctrl+t", "cycle header mode"},
+			{"ctrl+e", "edit header text"},
+		}},
+		{title: "app", rows: [][2]string{
+			{"?", "toggle this help"},
+			{"ctrl+c", "quit"},
+		}},
+	}
+	return helpOverlay("dashboard · help", sections, "? or esc to close")
 }
 
 // headerView rendert den globalen Header (Titel/Animation links, Uhr rechts).

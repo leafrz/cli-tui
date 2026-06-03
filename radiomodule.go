@@ -627,49 +627,33 @@ func (m *radioModule) playerViewRender() string {
 	return lipgloss.JoinVertical(lipgloss.Center, card, "", help)
 }
 
-// helpView rendert ein Tasten-Cheatsheet als zentrierte Karte.
+// helpView rendert die MODUL-spezifische Hilfe (nur Radio-Tasten).
+// Globale Befehle stehen auf der Dashboard-Hilfe (esc -> ?).
 func (m *radioModule) helpView() string {
-	keyStyle := lipgloss.NewStyle().Foreground(colPeach).Bold(true)
-	desc := lipgloss.NewStyle().Foreground(colCream)
-	head := lipgloss.NewStyle().Foreground(colMauve).Bold(true)
-
-	row := func(k, d string) string {
-		return lipgloss.JoinHorizontal(lipgloss.Left,
-			keyStyle.Width(12).Render(k), desc.Render(d))
+	sections := []helpSection{
+		{title: "search", rows: [][2]string{
+			{"enter", "search (empty = top DE)"},
+			{"ctrl+f", "show favorites"},
+			{"ctrl+r", "resume last station"},
+			{"esc", "back to dashboard"},
+		}},
+		{title: "list", rows: [][2]string{
+			{"↑/↓", "navigate"},
+			{"/", "filter"},
+			{"f", "toggle favorite"},
+			{"enter", "play station"},
+			{"esc", "back to search"},
+		}},
+		{title: "player", rows: [][2]string{
+			{"space", "play / pause"},
+			{"+ / −", "volume"},
+			{"m", "mute"},
+			{"t", "sleep timer (15/30/60)"},
+			{"f", "favorite station"},
+			{"esc / q", "back to list"},
+		}},
 	}
-
-	body := lipgloss.JoinVertical(lipgloss.Left,
-		head.Render("search"),
-		row("enter", "search (empty = top DE)"),
-		row("ctrl+f", "show favorites"),
-		row("ctrl+r", "resume last station"),
-		row("esc", "back to dashboard"),
-		"",
-		head.Render("list"),
-		row("↑/↓", "navigate"),
-		row("/", "filter"),
-		row("f", "toggle favorite"),
-		row("enter", "play station"),
-		row("esc", "back to search"),
-		"",
-		head.Render("player"),
-		row("space", "play / pause"),
-		row("+ / −", "volume"),
-		row("m", "mute"),
-		row("t", "sleep timer (15/30/60)"),
-		row("f", "favorite this station"),
-		row("esc / q", "back to list"),
-		"",
-		head.Render("global (dashboard)"),
-		row("ctrl+t", "cycle header mode"),
-		row("ctrl+e", "edit header text"),
-		row("?", "toggle this help"),
-		row("ctrl+c", "quit"),
-	)
-
-	card := cardStyle.Render(body)
-	hint := helpStyle.Render("press ? or esc to close")
-	return lipgloss.JoinVertical(lipgloss.Center, card, "", hint)
+	return helpOverlay("radio · help", sections, "? or esc to close   ·   global commands on the dashboard")
 }
 
 // footerView zeigt Status (links) und Lautstärke (rechts).
