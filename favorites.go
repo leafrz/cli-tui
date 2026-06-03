@@ -2,6 +2,14 @@ package main
 
 import "github.com/charmbracelet/bubbles/list"
 
+// favFlash liefert die Toast-Nachricht für das Favoriten-Umschalten.
+func favFlash(added bool) string {
+	if added {
+		return "★ added to favorites"
+	}
+	return "☆ removed from favorites"
+}
+
 // isFavorite prüft anhand der Stream-URL, ob ein Sender Favorit ist.
 func isFavorite(favs []station, url string) bool {
 	for _, f := range favs {

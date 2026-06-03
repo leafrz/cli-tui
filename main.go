@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -42,6 +43,9 @@ type searchResultMsg struct {
 	items []list.Item
 	title string
 }
+
+// clearFlashMsg löscht die transiente Toast-Nachricht.
+type clearFlashMsg struct{}
 
 // animMsg treibt die Equalizer-Animation an.
 type animMsg time.Time
@@ -108,6 +112,16 @@ type model struct {
 	lastStation *station  // zuletzt gespielter Sender (für Resume)
 	sleepUntil  time.Time // Sleep-Timer Ziel (zero = aus)
 	sleepStep   int       // 0=aus, 1=15m, 2=30m, 3=60m
+
+	flash      string    // transiente Toast-Nachricht (z.B. "★ added")
+	flashUntil time.Time // Ablaufzeitpunkt der Toast-Nachricht
+}
+
+// setFlash zeigt eine kurze Toast-Nachricht (~2s) und gibt das Lösch-Cmd zurück.
+func (m *model) setFlash(s string) tea.Cmd {
+	m.flash = s
+	m.flashUntil = time.Now().Add(2 * time.Second)
+	return tea.Tick(2*time.Second, func(time.Time) tea.Msg { return clearFlashMsg{} })
 }
 
 // sleepMinutes ordnet sleepStep eine Dauer zu.
@@ -179,6 +193,15 @@ func (m *model) Init() tea.Cmd {
 		Background(colPurple).Foreground(colCream).Bold(true)
 	m.list.Styles.FilterPrompt = m.list.Styles.FilterPrompt.Foreground(colTeal)
 	m.list.Styles.FilterCursor = m.list.Styles.FilterCursor.Foreground(colPeach)
+
+	// Eigene Tasten in die Hilfe-Leiste der Liste einblenden.
+	m.list.AdditionalShortHelpKeys = func() []key.Binding {
+		return []key.Binding{
+			key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "play")),
+			key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "favorite")),
+			key.NewBinding(key.WithKeys("ctrl+f"), key.WithHelp("ctrl+f", "favorites")),
+		}
+	}
 
 	m.state = stateSearch // Wir starten im Suchmodus
 
@@ -281,6 +304,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state = stateList
 		return m, nil
 
+	case clearFlashMsg:
+		if time.Now().After(m.flashUntil) {
+			m.flash = ""
+		}
+		return m, nil
+
 	case playSuccessMsg:
 		// Wiedergabe läuft -> Metadaten-Polling + Animation starten.
 		m.connecting = false
@@ -375,9 +404,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "f":
 				if it := m.list.SelectedItem(); it != nil {
 					if s, ok := it.(station); ok && s.StreamURL != "" {
-						m.favorites, _ = toggleFavorite(m.favorites, s)
+						var nowFav bool
+						m.favorites, nowFav = toggleFavorite(m.favorites, s)
 						m.refreshFavMarks()
-						return m, m.persistCmd()
+						return m, tea.Batch(m.persistCmd(), m.setFlash(favFlash(nowFav)))
 					}
 				}
 
@@ -433,8 +463,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			case "f":
 				if m.lastStation != nil {
-					m.favorites, _ = toggleFavorite(m.favorites, *m.lastStation)
-					return m, m.persistCmd()
+					var nowFav bool
+					m.favorites, nowFav = toggleFavorite(m.favorites, *m.lastStation)
+					return m, tea.Batch(m.persistCmd(), m.setFlash(favFlash(nowFav)))
 				}
 
 			case "+", "=":
@@ -479,10 +510,10 @@ func (m *model) View() string {
 			card = cardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, prompt, "", input))
 		}
 
-		help := helpStyle.Render("enter search   ·   ⌃f favorites   ·   ? help   ·   esc quit")
+		help := helpStyle.Render("enter: search   ·   ctrl+f: favorites   ·   esc: quit")
 		parts := []string{card, "", help}
 		if m.lastStation != nil {
-			resume := dimStyle.Render("⌃r resume ") + labelStyle.Render(m.lastStation.Name)
+			resume := dimStyle.Render("ctrl+r: resume ") + labelStyle.Render(m.lastStation.Name)
 			parts = append(parts, resume)
 		}
 		searchContent := lipgloss.JoinVertical(lipgloss.Center, parts...)
@@ -570,7 +601,11 @@ func (m *model) playerViewRender() string {
 		))
 	}
 
-	title := center.Render(stationNameStyle.Render(stationName))
+	titleText := stationNameStyle.Render(stationName)
+	if isFavorite(m.favorites, m.currentURL) {
+		titleText = lipgloss.NewStyle().Foreground(colPeach).Render("★ ") + titleText
+	}
+	title := center.Render(titleText)
 	statusLine := center.Render(status)
 
 	rows := []string{title, statusLine, "", midBlock, "", nowPlaying, "", volLine}
@@ -604,8 +639,8 @@ func (m *model) helpView() string {
 	body := lipgloss.JoinVertical(lipgloss.Left,
 		head.Render("search"),
 		row("enter", "search (empty = top DE)"),
-		row("⌃f", "show favorites"),
-		row("⌃r", "resume last station"),
+		row("ctrl+f", "show favorites"),
+		row("ctrl+r", "resume last station"),
 		"",
 		head.Render("list"),
 		row("↑/↓", "navigate"),
@@ -624,7 +659,7 @@ func (m *model) helpView() string {
 		"",
 		head.Render("global"),
 		row("?", "toggle this help"),
-		row("⌃c", "quit"),
+		row("ctrl+c", "quit"),
 	)
 
 	card := cardStyle.Render(body)
@@ -659,9 +694,11 @@ func (m *model) headerView() string {
 // Zeigt den fixen Footer an (Lautstärke, Status)
 func (m *model) footerView() string {
 
-	// 1. Status/Metadaten
+	// 1. Status/Metadaten (Toast hat Vorrang)
 	var statusText string
 	switch {
+	case m.flash != "":
+		statusText = lipgloss.NewStyle().Foreground(colPeach).Bold(true).Render(m.flash)
 	case m.state == stateSearch:
 		statusText = dimStyle.Render("ready · enter for top DE charts")
 	case m.state == stateList:
