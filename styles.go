@@ -1,11 +1,55 @@
 package main
 
 import (
+	"fmt"
 	"math"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 )
+
+// --- Help rendering --------------------------------------------------------
+
+// helpSection ist eine betitelte Gruppe von Tastenkürzeln.
+type helpSection struct {
+	title string
+	rows  [][2]string // {key, beschreibung}
+}
+
+// helpOverlay rendert ein einheitlich formatiertes, zentriertes Hilfe-Panel.
+// Die Key-Spalte wird über alle Zeilen hinweg bündig ausgerichtet.
+func helpOverlay(title string, sections []helpSection, footer string) string {
+	keyStyle := lipgloss.NewStyle().Foreground(colPeach)
+	descStyle := lipgloss.NewStyle().Foreground(colCream)
+	headStyle := lipgloss.NewStyle().Foreground(colMauve).Bold(true)
+	titleStyle := lipgloss.NewStyle().Foreground(colPeach).Bold(true)
+
+	// Breite der Key-Spalte über alle Zeilen bestimmen.
+	maxK := 0
+	for _, s := range sections {
+		for _, r := range s.rows {
+			if w := lipgloss.Width(r[0]); w > maxK {
+				maxK = w
+			}
+		}
+	}
+
+	lines := []string{titleStyle.Render(title), ""}
+	for i, s := range sections {
+		if i > 0 {
+			lines = append(lines, "")
+		}
+		lines = append(lines, headStyle.Render(s.title))
+		for _, r := range s.rows {
+			key := keyStyle.Render(fmt.Sprintf("%-*s", maxK, r[0]))
+			lines = append(lines, "  "+key+"   "+descStyle.Render(r[1]))
+		}
+	}
+
+	card := cardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
+	hint := helpStyle.Render(footer)
+	return lipgloss.JoinVertical(lipgloss.Center, card, "", hint)
+}
 
 // --- Lo-fi palette ---------------------------------------------------------
 // Warm, dusty, low-key. Nothing saturated; everything sits slightly faded,
@@ -24,12 +68,10 @@ var (
 
 // --- Shared styles ---------------------------------------------------------
 var (
-	appTitleStyle = lipgloss.NewStyle().Bold(true).Foreground(colMauve)
-	tagStyle      = lipgloss.NewStyle().Foreground(colPurple).Italic(true)
-	clockStyle    = lipgloss.NewStyle().Foreground(colDim)
-	helpStyle     = lipgloss.NewStyle().Foreground(colDim)
-	dimStyle      = lipgloss.NewStyle().Foreground(colDim)
-	labelStyle    = lipgloss.NewStyle().Foreground(colPurple)
+	clockStyle = lipgloss.NewStyle().Foreground(colDim)
+	helpStyle  = lipgloss.NewStyle().Foreground(colDim)
+	dimStyle   = lipgloss.NewStyle().Foreground(colDim)
+	labelStyle = lipgloss.NewStyle().Foreground(colPurple)
 
 	cardStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
