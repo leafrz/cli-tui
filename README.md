@@ -14,6 +14,8 @@ modules. The architecture is set up so more can drop in.
   - Inline ICY metadata (now-playing track), animated equalizer
   - Favorites (persisted), session restore (last volume + station), auto-reconnect
   - Mute, volume control, sleep timer (15/30/60 min)
+- **Music visualizer** — full-screen frequency spectrum reacting to the
+  radio's live audio (real FFT, not faked)
 - **System monitor** — live CPU (overall + per-core), memory, disk, and
   network throughput with gauges and sparklines
 - **Customizable header** — static text, rotating taglines, marquee, or
@@ -109,6 +111,8 @@ dashboard.go     Root model: launcher, global header, routing to modules
 header.go        Header modes + marquee + config
 radiomodule.go   The radio module (search / list / player)
 sysmon.go        The system-monitor module (gopsutil)
+visualizer.go    The music visualizer module (FFT spectrum)
+radio/meter.go   Audio tap + FFT used by the visualizer
 api.go           Radio Browser API + station type
 store.go         Per-user state persistence (merge-safe writes)
 favorites.go     Favorites helpers
@@ -135,7 +139,11 @@ global header and delegates the rest. Adding a new module is roughly:
 ## Roadmap
 
 - [x] System monitor module
+- [x] Music visualizer (audio-reactive)
 - [ ] Weather module
+- [ ] Spotify "now playing" + controls module (metadata only — Spotify
+      doesn't expose raw audio, so it can't be audio-reactive)
+- [ ] Ambient screensaver / big clock
 - [ ] More modules (it's a dashboard, after all)
 
 ---

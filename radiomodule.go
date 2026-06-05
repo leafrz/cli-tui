@@ -98,7 +98,7 @@ type radioModule struct {
 	flashUntil time.Time // Ablaufzeitpunkt der Toast-Nachricht
 }
 
-func newRadioModule() *radioModule { return &radioModule{} }
+func newRadioModule(p *radio.Player) *radioModule { return &radioModule{radioPlayer: p} }
 
 // Name erfüllt Module.
 func (m *radioModule) Name() string { return "radio" }
@@ -142,7 +142,7 @@ func (m *radioModule) refreshFavMarks() {
 }
 
 func (m *radioModule) Init() tea.Cmd {
-	m.radioPlayer = radio.NewPlayer()
+	// radioPlayer wird vom Root injiziert (geteilt mit dem Visualizer).
 
 	// Persistenten Zustand laden (Favoriten, letzte Lautstärke, letzter Sender).
 	st := loadState()
