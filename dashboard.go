@@ -89,6 +89,7 @@ func newRoot() *rootModel {
 		entries: []launcherEntry{
 			{icon: "📻", name: "internet radio", desc: "stream stations worldwide", module: newRadioModule(player)},
 			{icon: "📊", name: "system monitor", desc: "cpu · memory · disk · network", module: newSysmonModule()},
+			{icon: "🌌", name: "ambient", desc: "screensaver + big clock", module: newAmbientModule()},
 			{icon: "☀", name: "weather", desc: "coming soon", module: nil},
 		},
 		active:    -1,

@@ -18,6 +18,8 @@ modules. The architecture is set up so more can drop in.
   radio's live audio (real FFT, not faked); press `v` for full-screen
 - **System monitor** — live CPU (overall + per-core), memory, disk, and
   network throughput with gauges and sparklines
+- **Ambient** — a screensaver (starfield / matrix rain / blank) with a big
+  block clock overlaid; a calm "leave it open" screen
 - **Customizable header** — static text, rotating taglines, marquee, or
   context-aware (scrolls the now-playing track)
 - **Themes** — switchable color palettes (lofi / midnight / sepia / forest /
@@ -112,6 +114,7 @@ dashboard.go     Root model: launcher, global header, routing to modules
 header.go        Header modes + marquee + config
 radiomodule.go   The radio module (search / list / player)
 sysmon.go        The system-monitor module (gopsutil)
+ambient.go       The ambient module (screensaver + big clock)
 radio/meter.go   Audio tap + FFT powering the visualizer
 api.go           Radio Browser API + station type
 store.go         Per-user state persistence (merge-safe writes)
@@ -140,10 +143,8 @@ global header and delegates the rest. Adding a new module is roughly:
 
 - [x] System monitor module
 - [x] Audio-reactive visualizer (in the radio player, `v` for full-screen)
-- [ ] Weather module
-- [ ] Spotify "now playing" + controls module (metadata only — Spotify
-      doesn't expose raw audio, so it can't be audio-reactive)
-- [ ] Ambient screensaver / big clock
+- [x] Ambient module (screensaver + big clock)
+- [ ] Weather (could fold into the ambient screen)
 - [ ] More modules (it's a dashboard, after all)
 
 ---
