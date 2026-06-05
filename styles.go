@@ -172,6 +172,10 @@ func barRune(level float64, cellFromBottom, height int) rune {
 
 // renderBars zeichnet kompakte Balken (ein Band = 1 Spalte + Lücke) über height
 // Zeilen, eingefärbt nach Höhe. Für echte Spektrum-Pegel (0..1).
+//
+// WICHTIG: jede Zeile behält die volle Breite (kein TrimRight). Sonst wären die
+// Zeilen unterschiedlich breit und würden beim Zentrieren versetzt ausgerichtet
+// -> verrutschte Balken.
 func renderBars(levels []float64, height int) string {
 	if height < 1 {
 		height = 1
@@ -184,14 +188,17 @@ func renderBars(levels []float64, height int) string {
 		cellFromBottom := height - r
 		style := lipgloss.NewStyle().Foreground(eqRowColor(cellFromBottom, height))
 		var line strings.Builder
-		for _, lv := range levels {
+		for i, lv := range levels {
+			if i > 0 {
+				line.WriteByte(' ') // Lücke zwischen Balken
+			}
 			if ch := barRune(lv, cellFromBottom, height); ch == ' ' {
-				line.WriteString("  ")
+				line.WriteByte(' ')
 			} else {
-				line.WriteString(style.Render(string(ch)) + " ")
+				line.WriteString(style.Render(string(ch)))
 			}
 		}
-		rows[r] = strings.TrimRight(line.String(), " ")
+		rows[r] = line.String()
 	}
 	return strings.Join(rows, "\n")
 }
