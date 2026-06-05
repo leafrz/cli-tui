@@ -413,12 +413,8 @@ func (m *radioModule) Update(msg tea.Msg) (Module, tea.Cmd) {
 			m.state = stateList
 			return m, nil
 		}
-		// Auto-Reconnect bei Stream-Abbruch.
-		if m.uiPlaying && !m.uiPaused && m.state == statePlayer && m.radioPlayer.Ended() {
-			m.connecting = true
-			m.metadata = ""
-			return m, tea.Batch(m.playCmd(), m.spinner.Tick, doTick())
-		}
+		// Auto-Reconnect passiert jetzt im Player selbst (auch wenn dieses Modul
+		// inaktiv ist). Hier nur noch Metadaten-Polling.
 		if m.uiPlaying && m.state == statePlayer {
 			return m, tea.Batch(m.fetchMetaCmd(), doTick())
 		}

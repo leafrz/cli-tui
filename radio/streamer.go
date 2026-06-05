@@ -32,21 +32,24 @@ type bufferedStreamer struct {
 	closed  bool
 	err     error
 	onEnd   func() // einmalig bei natürlichem Stream-Ende
+	onData  func() // bei jedem erfolgreichen Quell-Read (Liveness)
 	endOnce sync.Once
 }
 
 // newBufferedStreamer startet sofort die Vorausles-Goroutine.
 // capacity = Puffergröße in Samples (z.B. SampleRate.N(2*time.Second)).
 // onEnd wird einmal aufgerufen, wenn der Stream von selbst endet (Drop/EOF).
-func newBufferedStreamer(inner beep.Streamer, capacity int, onEnd func()) *bufferedStreamer {
+// onData wird bei jedem erfolgreichen Quell-Read aufgerufen (für Stall-Erkennung).
+func newBufferedStreamer(inner beep.Streamer, capacity int, onEnd, onData func()) *bufferedStreamer {
 	if capacity < 1 {
 		capacity = 1
 	}
 	b := &bufferedStreamer{
-		inner: inner,
-		buf:   make([][2]float64, capacity),
-		size:  capacity,
-		onEnd: onEnd,
+		inner:  inner,
+		buf:    make([][2]float64, capacity),
+		size:   capacity,
+		onEnd:  onEnd,
+		onData: onData,
 	}
 	b.cond = sync.NewCond(&b.mu)
 	go b.fill()
@@ -77,6 +80,9 @@ func (b *bufferedStreamer) fill() {
 
 		// Blockierender Read aus dem Netzwerk/Decoder - ohne Lock.
 		n, ok := b.inner.Stream(tmp)
+		if n > 0 && b.onData != nil {
+			b.onData() // Liveness-Signal (Stall-Erkennung)
+		}
 
 		b.mu.Lock()
 		for i := 0; i < n; i++ {

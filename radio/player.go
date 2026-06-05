@@ -56,12 +56,62 @@ type Player struct {
 	httpResp *http.Response
 	buffered *bufferedStreamer
 	meter    *meter
+
+	// Auto-Reconnect: der Player verbindet sich selbst neu, wenn der Stream
+	// endet ODER stehenbleibt (halb-tote Verbindung) — unabhängig davon, welches
+	// Modul gerade aktiv ist.
+	streamURL string
+	stopped   bool          // true = absichtlich gestoppt (kein Reconnect)
+	lastData  atomic.Int64  // UnixNano des letzten echten Audio-Reads
+	reconnect chan struct{} // gepuffert (1), entprellt Reconnect-Signale
 }
 
 func NewPlayer() *Player {
-	return &Player{
+	p := &Player{
 		volumeLevel:   1.0,
 		gateThreshold: 0.0, // Gate standardmäßig aus -> kein Eingriff ins Audio
+		reconnect:     make(chan struct{}, 1),
+	}
+	go p.supervise()
+	return p
+}
+
+// triggerReconnect meldet (nicht-blockierend) einen Reconnect-Wunsch.
+func (p *Player) triggerReconnect() {
+	select {
+	case p.reconnect <- struct{}{}:
+	default:
+	}
+}
+
+// supervise verbindet bei einem Reconnect-Signal mit Backoff neu, solange der
+// Player nicht absichtlich gestoppt (oder pausiert) wurde.
+func (p *Player) supervise() {
+	for range p.reconnect {
+		p.mu.RLock()
+		url, stopped, paused := p.streamURL, p.stopped, p.isPaused
+		p.mu.RUnlock()
+		if stopped || paused || url == "" {
+			continue
+		}
+		backoff := time.Second
+		for attempt := 0; attempt < 6; attempt++ {
+			p.mu.RLock()
+			abort := p.stopped || p.streamURL != url
+			p.mu.RUnlock()
+			if abort {
+				break
+			}
+			time.Sleep(backoff)
+			debugf("reconnect: attempt %d -> %s", attempt+1, url)
+			if err := p.Play(url); err == nil {
+				break
+			}
+			backoff *= 2
+			if backoff > 15*time.Second {
+				backoff = 15 * time.Second
+			}
+		}
 	}
 }
 
@@ -147,11 +197,14 @@ func (p *Player) Play(streamURL string) error {
 
 	// 2. Neuen Context anlegen (kurzer Lock).
 	p.ended.Store(false)
+	p.lastData.Store(time.Now().UnixNano())
 	p.mu.Lock()
 	p.ctx, p.cancel = context.WithCancel(context.Background())
 	ctx := p.ctx
 	localCancel := p.cancel
 	threshold := p.gateThreshold
+	p.streamURL = streamURL
+	p.stopped = false
 	p.mu.Unlock()
 
 	// 3. Blockierende Arbeit OHNE Lock --------------------------------------
@@ -227,9 +280,14 @@ func (p *Player) Play(streamURL string) error {
 	// Netzwerk/Decode vom Audio-Callback entkoppeln (siehe streamer.go).
 	// 2 Sekunden Vorauspuffer in der Quell-Sample-Rate. Bei natürlichem Ende
 	// (Stream-Drop) setzen wir das ended-Flag für den Auto-Reconnect.
-	buffered := newBufferedStreamer(streamer, int(format.SampleRate.N(2*time.Second)), func() {
-		p.ended.Store(true)
-	})
+	buffered := newBufferedStreamer(streamer, int(format.SampleRate.N(2*time.Second)),
+		func() { // onEnd: Stream zu Ende -> Reconnect anstoßen
+			p.ended.Store(true)
+			p.triggerReconnect()
+		},
+		func() { // onData: echte Audiodaten gelesen -> Liveness-Zeitstempel
+			p.lastData.Store(time.Now().UnixNano())
+		})
 
 	// Auf die feste Speaker-Rate resampeln, falls nötig.
 	var audioStream beep.Streamer = buffered
@@ -275,6 +333,36 @@ func (p *Player) Play(streamURL string) error {
 	speaker.Play(ctrl)
 	debugf("Play: speaker.Play issued, isPlaying=true")
 
+	// Stall-Watchdog: erkennt halb-tote Verbindungen (kein EOF, aber keine
+	// Daten mehr) und stößt einen Reconnect an.
+	go func() {
+		t := time.NewTicker(2 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				// Pausiert? Dann liest der Puffer absichtlich nicht -> kein Stall.
+				// lastData frisch halten, damit es beim Fortsetzen keinen
+				// Fehlalarm gibt.
+				p.mu.RLock()
+				paused := p.isPaused
+				p.mu.RUnlock()
+				if paused {
+					p.lastData.Store(time.Now().UnixNano())
+					continue
+				}
+				last := time.Unix(0, p.lastData.Load())
+				if time.Since(last) > 10*time.Second {
+					debugf("stall watchdog: no audio data for >10s -> reconnect")
+					p.triggerReconnect()
+					return
+				}
+			}
+		}
+	}()
+
 	return nil
 }
 
@@ -309,6 +397,9 @@ func (p *Player) stopInternal() {
 	p.isPaused = false
 	p.ctrl = nil
 	p.volume = nil
+	// Als "absichtlich gestoppt" markieren -> kein Auto-Reconnect. Play() setzt
+	// das danach wieder auf false.
+	p.stopped = true
 	// metadata über metaMu leeren (eigener Lock, siehe Feldkommentar).
 	p.setMetadata("")
 }
