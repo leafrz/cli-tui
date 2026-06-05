@@ -39,6 +39,21 @@ var themes = []themeDef{
 		cream: "#e3e8d8", mauve: "#a7c080", purple: "#5c7a52", teal: "#83a598",
 		peach: "#d3a86a", dim: "#728465", faint: "#2e3a2a", errorC: "#c0705e", good: "#8fb46a",
 	},
+	{
+		name:  "rosepine",
+		cream: "#e0def4", mauve: "#c4a7e7", purple: "#6e6a86", teal: "#9ccfd8",
+		peach: "#f6c177", dim: "#908caa", faint: "#26233a", errorC: "#eb6f92", good: "#abc9a0",
+	},
+	{
+		name:  "nord",
+		cream: "#e5e9f0", mauve: "#b48ead", purple: "#4c566a", teal: "#88c0d0",
+		peach: "#d08770", dim: "#7b88a1", faint: "#3b4252", errorC: "#bf616a", good: "#a3be8c",
+	},
+	{
+		name:  "noir",
+		cream: "#e6e6e6", mauve: "#c0c0c0", purple: "#6f6f6f", teal: "#9a9a9a",
+		peach: "#cfcfcf", dim: "#808080", faint: "#353535", errorC: "#b86b6b", good: "#8f9f7f",
+	},
 }
 
 // themeByName liefert das Theme oder das erste (lofi) als Fallback.

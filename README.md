@@ -17,8 +17,8 @@ is set up so more can drop in.
   - Mute, volume control, sleep timer (15/30/60 min)
 - **Customizable header** — static text, rotating taglines, marquee, or
   context-aware (scrolls the now-playing track)
-- **Themes** — switchable color palettes (lofi / midnight / sepia / forest),
-  applied live and persisted
+- **Themes** — switchable color palettes (lofi / midnight / sepia / forest /
+  rosepine / nord / noir), applied live and persisted
 - Per-user state stored outside the repo (favorites, header text, etc.)
 
 ## Requirements
@@ -56,7 +56,7 @@ go build -o lofi-radio .
 | `enter` | Open module |
 | `ctrl+t` | Cycle header mode (static → rotate → marquee → context) |
 | `ctrl+e` | Edit header text |
-| `ctrl+p` | Cycle theme (lofi / midnight / sepia / forest) |
+| `ctrl+p` | Cycle theme (7 palettes: lofi, midnight, sepia, forest, rosepine, nord, noir) |
 | `?` | Global help |
 | `ctrl+c` | Quit |
 
