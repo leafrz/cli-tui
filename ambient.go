@@ -7,9 +7,11 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/leafrz/dashboard/radio"
 )
 
-// --- cell grid (für Overlay von Uhr über Animation) ------------------------
+// --- cell grid (für Overlay von Uhr/Infos über Animation) ------------------
 
 type cell struct {
 	ch  rune
@@ -69,6 +71,9 @@ func (g *grid) render() string {
 	return sb.String()
 }
 
+// star wird von der Starfield-Szene genutzt (scenes.go).
+type star struct{ x, y, z float64 }
+
 // --- messages --------------------------------------------------------------
 
 type ambientTickMsg time.Time
@@ -79,18 +84,8 @@ func ambientTick() tea.Cmd {
 
 // --- module ----------------------------------------------------------------
 
-const (
-	saverStarfield = iota
-	saverMatrix
-	saverBlank
-	saverCount
-)
-
-var saverNames = []string{"starfield", "matrix", "blank"}
-
-type star struct{ x, y, z float64 }
-
 type ambientModule struct {
+	player        *radio.Player
 	width, height int
 	frame         int
 	style         int
@@ -98,20 +93,21 @@ type ambientModule struct {
 	showHelp      bool
 	ticking       bool
 
-	rng *rand.Rand
+	rng    *rand.Rand
+	scenes []scene
 
-	// starfield
-	stars        []star
-	lastW, lastH int
-
-	// matrix
-	drops []float64 // Kopf-Position je Spalte
+	// weather
+	weatherLine     string
+	weatherAt       time.Time
+	weatherFetching bool
 }
 
-func newAmbientModule() *ambientModule {
+func newAmbientModule(p *radio.Player) *ambientModule {
 	return &ambientModule{
+		player:    p,
 		rng:       rand.New(rand.NewSource(time.Now().UnixNano())),
 		showClock: true,
+		scenes:    buildScenes(),
 	}
 }
 
@@ -119,21 +115,58 @@ func (m *ambientModule) Name() string   { return "ambient" }
 func (m *ambientModule) Status() string { return "" }
 func (m *ambientModule) Init() tea.Cmd  { return nil }
 
+// shouldFetchWeather: Backoff 20s bei Fehlschlag, sonst alle 15 Minuten.
+func (m *ambientModule) shouldFetchWeather() bool {
+	if m.weatherFetching {
+		return false
+	}
+	interval := 15 * time.Minute
+	if m.weatherLine == "" {
+		interval = 20 * time.Second
+	}
+	return time.Since(m.weatherAt) > interval
+}
+
+func (m *ambientModule) maybeWeather() tea.Cmd {
+	if !m.shouldFetchWeather() {
+		return nil
+	}
+	m.weatherFetching = true
+	m.weatherAt = time.Now()
+	return weatherCmd()
+}
+
 func (m *ambientModule) Update(msg tea.Msg) (Module, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 
 	case focusMsg:
+		cmds := []tea.Cmd{}
 		if !m.ticking {
 			m.ticking = true
-			return m, ambientTick()
+			cmds = append(cmds, ambientTick())
 		}
+		if c := m.maybeWeather(); c != nil {
+			cmds = append(cmds, c)
+		}
+		return m, tea.Batch(cmds...)
 
 	case ambientTickMsg:
 		m.frame++
 		m.advance()
-		return m, ambientTick()
+		cmds := []tea.Cmd{ambientTick()}
+		if c := m.maybeWeather(); c != nil {
+			cmds = append(cmds, c)
+		}
+		return m, tea.Batch(cmds...)
+
+	case weatherMsg:
+		m.weatherFetching = false
+		if msg.text != "" {
+			m.weatherLine = msg.text
+		}
+		return m, nil
 
 	case tea.KeyMsg:
 		k := msg.String()
@@ -150,12 +183,18 @@ func (m *ambientModule) Update(msg tea.Msg) (Module, tea.Cmd) {
 		case "?":
 			m.showHelp = true
 		case " ", "s":
-			m.style = (m.style + 1) % saverCount
+			m.style = (m.style + 1) % len(m.scenes)
+		case "S":
+			m.style = (m.style - 1 + len(m.scenes)) % len(m.scenes)
 		case "c":
 			m.showClock = !m.showClock
 		}
 	}
 	return m, nil
+}
+
+func (m *ambientModule) advance() {
+	m.scenes[m.style].advance(m.width, m.height, m.rng)
 }
 
 func (m *ambientModule) View(width, height int) string {
@@ -168,33 +207,16 @@ func (m *ambientModule) View(width, height int) string {
 	}
 
 	g := newGrid(width, height)
-
-	switch m.style {
-	case saverStarfield:
-		m.drawStars(g)
-	case saverMatrix:
-		m.drawMatrix(g)
-	}
-
+	m.scenes[m.style].draw(g, m.rng)
 	if m.showClock {
 		m.drawClock(g)
 	}
 
-	// dezente Hilfezeile unten.
-	hint := "space: next scene · c: clock · ?: help · esc: dashboard   (" + saverNames[m.style] + ")"
+	hint := "space: scene · c: clock · ?: help · esc: dashboard   (" +
+		m.scenes[m.style].name() + ")"
 	g.stampText(centerX(width, hint), height-1, hint, colDim)
 
 	return g.render()
-}
-
-// advance schreitet die Animation genau einmal pro Tick voran.
-func (m *ambientModule) advance() {
-	switch m.style {
-	case saverStarfield:
-		m.advanceStars()
-	case saverMatrix:
-		m.advanceMatrix()
-	}
 }
 
 // centerX liefert die linke Startspalte, um s (nach Runen) zu zentrieren.
@@ -206,106 +228,19 @@ func centerX(width int, s string) int {
 	return x
 }
 
-// --- starfield -------------------------------------------------------------
-
-func (m *ambientModule) ensureStars() {
-	if m.width == m.lastW && m.height == m.lastH && m.stars != nil {
-		return
+// nowPlaying liefert die "läuft gerade"-Zeile (oder "").
+func (m *ambientModule) nowPlaying() string {
+	if m.player == nil {
+		return ""
 	}
-	m.lastW, m.lastH = m.width, m.height
-	n := m.width * m.height / 14
-	if n < 30 {
-		n = 30
+	playing, _, _ := m.player.GetStatus()
+	if !playing {
+		return ""
 	}
-	m.stars = make([]star, n)
-	for i := range m.stars {
-		m.stars[i] = star{m.rng.Float64()*2 - 1, m.rng.Float64()*2 - 1, m.rng.Float64()*0.9 + 0.1}
+	if meta := m.player.GetMetadata(); meta != "" {
+		return "♫ " + meta
 	}
-}
-
-func (m *ambientModule) advanceStars() {
-	m.ensureStars()
-	for i := range m.stars {
-		s := &m.stars[i]
-		s.z -= 0.012
-		if s.z <= 0.02 {
-			s.x = m.rng.Float64()*2 - 1
-			s.y = m.rng.Float64()*2 - 1
-			s.z = 1
-		}
-	}
-}
-
-func (m *ambientModule) drawStars(g *grid) {
-	m.ensureStars()
-	cx, cy := float64(m.width)/2, float64(m.height)/2
-	for i := range m.stars {
-		s := m.stars[i]
-		sx := int(s.x/s.z*cx + cx)
-		sy := int(s.y/s.z*cy + cy)
-		var ch rune
-		var col lipgloss.Color
-		switch {
-		case s.z < 0.35:
-			ch, col = '@', colCream
-		case s.z < 0.7:
-			ch, col = '*', colMauve
-		default:
-			ch, col = '.', colDim
-		}
-		g.set(sx, sy, ch, col)
-	}
-}
-
-// --- matrix rain -----------------------------------------------------------
-
-var matrixRunes = []rune("ABCDEFGHJKLMNPQRSTUVWXYZ0123456789@#$%&*+=<>?/")
-
-func (m *ambientModule) ensureDrops() {
-	if len(m.drops) != m.width {
-		m.drops = make([]float64, m.width)
-		for x := range m.drops {
-			m.drops[x] = m.rng.Float64() * float64(m.height)
-		}
-	}
-}
-
-func (m *ambientModule) advanceMatrix() {
-	m.ensureDrops()
-	const trail = 10
-	for x := 0; x < m.width; x++ {
-		m.drops[x] += 0.5 + float64(x%3)*0.25
-		if int(m.drops[x])-trail > m.height {
-			m.drops[x] = 0
-		}
-	}
-}
-
-func (m *ambientModule) drawMatrix(g *grid) {
-	m.ensureDrops()
-	const trail = 10
-	for x := 0; x < m.width && x < len(m.drops); x++ {
-		head := int(m.drops[x])
-		for t := 0; t < trail; t++ {
-			y := head - t
-			if y < 0 || y >= m.height {
-				continue
-			}
-			r := matrixRunes[m.rng.Intn(len(matrixRunes))]
-			var col lipgloss.Color
-			switch {
-			case t == 0:
-				col = colCream // heller Kopf
-			case t < 3:
-				col = colGood
-			case t < 6:
-				col = colTeal
-			default:
-				col = colFaint
-			}
-			g.set(x, y, r, col)
-		}
-	}
+	return "● live"
 }
 
 // --- big clock -------------------------------------------------------------
@@ -328,19 +263,17 @@ func (m *ambientModule) drawClock(g *grid) {
 	now := time.Now()
 	text := now.Format("15:04")
 
-	const gw, gh = 4, 5 // Glyph-Basisgröße
+	const gw, gh = 4, 5
 	const gap = 1
-	const sx, sy = 2, 2 // Skalierung (x, y)
+	const sx, sy = 2, 2
 
-	// Gesamtbreite in Basis-Spalten.
 	baseW := len(text)*(gw+gap) - gap
 	totalW := baseW * sx
 	totalH := gh * sy
 
 	ox := (m.width - totalW) / 2
-	oy := (m.height-totalH)/2 - 1
+	oy := (m.height-totalH)/2 - 2
 
-	col := colPeach
 	for i, ch := range text {
 		glyph, ok := clockFont[ch]
 		if !ok {
@@ -353,30 +286,42 @@ func (m *ambientModule) drawClock(g *grid) {
 				if rrow[c] != '█' {
 					continue
 				}
-				// skaliert stampen
 				for dy := 0; dy < sy; dy++ {
 					for dx := 0; dx < sx; dx++ {
-						g.set(ox+(baseX+c)*sx+dx, oy+r*sy+dy, '█', col)
+						g.set(ox+(baseX+c)*sx+dx, oy+r*sy+dy, '█', colPeach)
 					}
 				}
 			}
 		}
 	}
 
-	// Datum/Sekunden darunter, normaler Text.
-	sub := now.Format("Mon 02 Jan · 15:04:05")
-	g.stampText(centerX(m.width, sub), oy+totalH+1, sub, colDim)
+	// Info-Zeilen unter der Uhr.
+	type infoLine struct {
+		s string
+		c lipgloss.Color
+	}
+	lines := []infoLine{{now.Format("Mon 02 Jan · 15:04:05"), colDim}}
+	if m.weatherLine != "" {
+		lines = append(lines, infoLine{m.weatherLine, colTeal})
+	}
+	if np := m.nowPlaying(); np != "" {
+		lines = append(lines, infoLine{np, colMauve})
+	}
+	for i, ln := range lines {
+		g.stampText(centerX(m.width, ln.s), oy+totalH+1+i, ln.s, ln.c)
+	}
 }
 
 func (m *ambientModule) helpView() string {
 	sections := []helpSection{
 		{title: "ambient", rows: [][2]string{
-			{"space / s", "next scene (starfield / matrix / blank)"},
+			{"space / s", "next scene"},
+			{"S", "previous scene"},
 			{"c", "toggle clock"},
 			{"esc / q", "back to dashboard"},
 			{"?", "toggle this help"},
 		}},
 	}
 	return helpOverlay("ambient · help", sections,
-		"? or esc to close   ·   global commands on the dashboard")
+		"? or esc to close   ·   13 scenes · weather · now-playing")
 }

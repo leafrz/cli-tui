@@ -40,6 +40,13 @@ type focusMsg struct{}
 
 func focusModule() tea.Msg { return focusMsg{} }
 
+// switchModuleMsg wechselt direkt zu einem benannten Modul (z.B. Radio -> Ambient).
+type switchModuleMsg struct{ name string }
+
+func switchTo(name string) tea.Cmd {
+	return func() tea.Msg { return switchModuleMsg{name} }
+}
+
 // launcherEntry ist ein Eintrag im Startmenü. module == nil => "coming soon".
 type launcherEntry struct {
 	icon   string
@@ -89,7 +96,7 @@ func newRoot() *rootModel {
 		entries: []launcherEntry{
 			{icon: "📻", name: "internet radio", desc: "stream stations worldwide", module: newRadioModule(player)},
 			{icon: "📊", name: "system monitor", desc: "cpu · memory · disk · network", module: newSysmonModule()},
-			{icon: "🌌", name: "ambient", desc: "screensaver + big clock", module: newAmbientModule()},
+			{icon: "🌌", name: "ambient", desc: "screensaver + clock + weather", module: newAmbientModule(player)},
 			{icon: "☀", name: "weather", desc: "coming soon", module: nil},
 		},
 		active:    -1,
@@ -141,6 +148,15 @@ func (r *rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case goToLauncherMsg:
 		r.active = -1
+		return r, nil
+
+	case switchModuleMsg:
+		for i := range r.entries {
+			if r.entries[i].name == msg.name && r.entries[i].module != nil {
+				r.active = i
+				return r, focusModule
+			}
+		}
 		return r, nil
 
 	case themeChangedMsg:

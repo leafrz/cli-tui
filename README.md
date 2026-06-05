@@ -18,8 +18,11 @@ modules. The architecture is set up so more can drop in.
   radio's live audio (real FFT, not faked); press `v` for full-screen
 - **System monitor** — live CPU (overall + per-core), memory, disk, and
   network throughput with gauges and sparklines
-- **Ambient** — a screensaver (starfield / matrix rain / blank) with a big
-  block clock overlaid; a calm "leave it open" screen
+- **Ambient** — a "leave it open" screen: 13 animated scenes (starfield,
+  matrix, rain, snow, plasma, life, fireworks, dvd, waves, fire, ripples,
+  spiral, blank), a big block clock, live **weather**, and a now-playing
+  line when the radio is going. Jump here from the radio with `a` and the
+  music keeps playing.
 - **Customizable header** — static text, rotating taglines, marquee, or
   context-aware (scrolls the now-playing track)
 - **Themes** — switchable color palettes (lofi / midnight / sepia / forest /
@@ -79,9 +82,18 @@ go build -o lofi-radio .
 | Player | `+` / `-` | Volume |
 | Player | `m` | Mute |
 | Player | `v` | Full-screen visualizer |
+| Player | `a` | Ambient mode (keeps playing) |
 | Player | `t` | Sleep timer |
 | Player | `f` | Favorite this station |
 | Player | `esc` / `q` | Back to list |
+
+### Ambient module
+| Key | Action |
+|-----|--------|
+| `space` / `s` | Next scene |
+| `S` | Previous scene |
+| `c` | Toggle clock |
+| `esc` | Back to dashboard |
 
 Press `?` inside a module for module-specific help.
 
@@ -114,7 +126,9 @@ dashboard.go     Root model: launcher, global header, routing to modules
 header.go        Header modes + marquee + config
 radiomodule.go   The radio module (search / list / player)
 sysmon.go        The system-monitor module (gopsutil)
-ambient.go       The ambient module (screensaver + big clock)
+ambient.go       The ambient module (compositor, clock, weather, now-playing)
+scenes.go        The 13 ambient scenes (scene interface)
+weather.go       IP geolocation + Open-Meteo (no API key)
 radio/meter.go   Audio tap + FFT powering the visualizer
 api.go           Radio Browser API + station type
 store.go         Per-user state persistence (merge-safe writes)
@@ -143,8 +157,7 @@ global header and delegates the rest. Adding a new module is roughly:
 
 - [x] System monitor module
 - [x] Audio-reactive visualizer (in the radio player, `v` for full-screen)
-- [x] Ambient module (screensaver + big clock)
-- [ ] Weather (could fold into the ambient screen)
+- [x] Ambient module (13 scenes + clock + weather + now-playing)
 - [ ] More modules (it's a dashboard, after all)
 
 ---

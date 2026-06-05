@@ -540,6 +540,10 @@ func (m *radioModule) Update(msg tea.Msg) (Module, tea.Cmd) {
 			case "v":
 				m.vizFull = !m.vizFull
 
+			case "a":
+				// In den Ambient-Modus wechseln; Audio läuft weiter.
+				return m, switchTo("ambient")
+
 			case "t":
 				m.cycleSleep()
 
@@ -712,7 +716,7 @@ func (m *radioModule) playerViewRender() string {
 
 	card := cardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
 
-	help := helpStyle.Render("space play/pause · +/− vol · m mute · v viz · t sleep · f fav · ? help · esc back")
+	help := helpStyle.Render("space · +/− vol · m mute · v viz · a ambient · t sleep · f fav · ? help · esc")
 
 	return lipgloss.JoinVertical(lipgloss.Center, card, "", help)
 }
@@ -759,6 +763,7 @@ func (m *radioModule) helpView() string {
 			{"+ / −", "volume"},
 			{"m", "mute"},
 			{"v", "fullscreen visualizer"},
+			{"a", "ambient mode (keeps playing)"},
 			{"t", "sleep timer (15/30/60)"},
 			{"f", "favorite station"},
 			{"esc / q", "back to list"},

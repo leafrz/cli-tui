@@ -3,26 +3,29 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"github.com/leafrz/dashboard/radio"
 )
 
-// TestAmbientRender prüft, dass ein Frame die richtige Höhe hat und die Uhr malt.
+// TestAmbientRender prüft, dass JEDE Szene einen Frame korrekter Höhe liefert
+// und die Uhr malt (kein Out-of-bounds o.ä.).
 func TestAmbientRender(t *testing.T) {
 	const w, h = 80, 24
-	m := newAmbientModule()
+	m := newAmbientModule(radio.NewPlayer())
 	m.width, m.height = w, h
 
-	for _, style := range []int{saverStarfield, saverMatrix, saverBlank} {
+	for style := 0; style < len(m.scenes); style++ {
 		m.style = style
-		for i := 0; i < 5; i++ {
+		for i := 0; i < 6; i++ {
 			m.advance()
 		}
 		out := m.View(w, h)
 		lines := strings.Split(out, "\n")
 		if len(lines) != h {
-			t.Errorf("style %d: expected %d lines, got %d", style, h, len(lines))
+			t.Errorf("scene %q: expected %d lines, got %d", m.scenes[style].name(), h, len(lines))
 		}
 		if !strings.ContainsRune(out, '█') {
-			t.Errorf("style %d: expected clock blocks in output", style)
+			t.Errorf("scene %q: expected clock blocks in output", m.scenes[style].name())
 		}
 	}
 }
