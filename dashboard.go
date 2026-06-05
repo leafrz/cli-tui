@@ -25,6 +25,12 @@ type goToLauncherMsg struct{}
 
 func goToLauncher() tea.Msg { return goToLauncherMsg{} }
 
+// themeChangedMsg signalisiert allen Modulen, ihre Komponenten-Styles (Liste,
+// Eingabe, Spinner) an die neue Palette anzupassen.
+type themeChangedMsg struct{}
+
+func themeChanged() tea.Msg { return themeChangedMsg{} }
+
 // launcherEntry ist ein Eintrag im Startmenü. module == nil => "coming soon".
 type launcherEntry struct {
 	icon   string
@@ -46,6 +52,8 @@ type rootModel struct {
 
 	showHelp bool // globale Hilfe (nur im Launcher)
 
+	theme string // aktueller Theme-Name
+
 	header      headerConfig
 	headerFrame int
 
@@ -56,6 +64,7 @@ type rootModel struct {
 
 func newRoot() *rootModel {
 	st := loadState()
+	applyTheme(themeByName(st.Theme)) // Palette setzen, bevor irgendwas rendert
 
 	ei := textinput.New()
 	ei.Prompt = "› "
@@ -71,6 +80,7 @@ func newRoot() *rootModel {
 			{icon: "✶", name: "placeholder", desc: "coming soon", module: nil},
 		},
 		active:    -1,
+		theme:     st.Theme,
 		header:    st.Header.withDefaults(),
 		editInput: ei,
 	}
@@ -120,6 +130,18 @@ func (r *rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		r.active = -1
 		return r, nil
 
+	case themeChangedMsg:
+		// an ALLE Module weiterreichen, damit auch inaktive ihre Styles anpassen.
+		var cmds []tea.Cmd
+		for i := range r.entries {
+			if r.entries[i].module != nil {
+				mod, c := r.entries[i].module.Update(msg)
+				r.entries[i].module = mod
+				cmds = append(cmds, c)
+			}
+		}
+		return r, tea.Batch(cmds...)
+
 	case tea.KeyMsg:
 		key := msg.String()
 
@@ -151,6 +173,10 @@ func (r *rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			r.editInput.CursorEnd()
 			r.editInput.Focus()
 			return r, textinput.Blink
+		case "ctrl+p":
+			r.theme = nextThemeName(r.theme)
+			applyTheme(themeByName(r.theme))
+			return r, tea.Batch(r.saveThemeCmd(), themeChanged)
 		}
 
 		// 3) Launcher-Navigation (kein aktives Modul).
@@ -209,7 +235,7 @@ func (r *rootModel) View() string {
 			r.headerEditorView())
 	case r.inLauncher() && r.showHelp:
 		content = lipgloss.Place(r.width, contentH, lipgloss.Center, lipgloss.Center,
-			globalHelpView())
+			globalHelpView(r.theme))
 	case r.inLauncher():
 		content = r.launcherView(contentH)
 	default:
@@ -240,23 +266,26 @@ func (r *rootModel) launcherView(contentH int) string {
 	}
 
 	card := cardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
-	help := helpStyle.Render("↑/↓: select   ·   enter: open   ·   ?: help   ·   ctrl+c: quit")
+	help := helpStyle.Render(fmt.Sprintf(
+		"↑/↓: select   ·   enter: open   ·   ctrl+p: theme (%s)   ·   ?: help   ·   ctrl+c: quit",
+		r.theme))
 	menu := lipgloss.JoinVertical(lipgloss.Center, card, "", help)
 
 	return lipgloss.Place(r.width, contentH, lipgloss.Center, lipgloss.Center, menu)
 }
 
 // globalHelpView rendert die GLOBALE Hilfe (dashboard-weite Befehle).
-func globalHelpView() string {
+func globalHelpView(theme string) string {
 	sections := []helpSection{
 		{title: "navigation", rows: [][2]string{
 			{"↑/↓", "select module"},
 			{"enter", "open module"},
 			{"esc", "back to dashboard (from a module)"},
 		}},
-		{title: "header", rows: [][2]string{
+		{title: "appearance", rows: [][2]string{
 			{"ctrl+t", "cycle header mode"},
 			{"ctrl+e", "edit header text"},
+			{"ctrl+p", "cycle theme (now: " + theme + ")"},
 		}},
 		{title: "app", rows: [][2]string{
 			{"?", "toggle this help"},
@@ -319,6 +348,15 @@ func (r *rootModel) saveHeaderCmd() tea.Cmd {
 	h := r.header
 	return func() tea.Msg {
 		_ = updateState(func(s *persistedState) { s.Header = h })
+		return nil
+	}
+}
+
+// saveThemeCmd persistiert NUR den Theme-Namen (merge).
+func (r *rootModel) saveThemeCmd() tea.Cmd {
+	name := r.theme
+	return func() tea.Msg {
+		_ = updateState(func(s *persistedState) { s.Theme = name })
 		return nil
 	}
 }
