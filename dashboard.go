@@ -31,6 +31,13 @@ type themeChangedMsg struct{}
 
 func themeChanged() tea.Msg { return themeChangedMsg{} }
 
+// focusMsg wird an ein Modul gesendet, sobald es geöffnet/aktiv wird. Module
+// nutzen es, um ihre Ticker/Polling (neu) zu starten — diese sterben, während
+// das Modul inaktiv ist (es bekommt dann keine Nachrichten).
+type focusMsg struct{}
+
+func focusModule() tea.Msg { return focusMsg{} }
+
 // launcherEntry ist ein Eintrag im Startmenü. module == nil => "coming soon".
 type launcherEntry struct {
 	icon   string
@@ -76,8 +83,8 @@ func newRoot() *rootModel {
 	return &rootModel{
 		entries: []launcherEntry{
 			{icon: "📻", name: "internet radio", desc: "stream stations worldwide", module: newRadioModule()},
+			{icon: "📊", name: "system monitor", desc: "cpu · memory · disk · network", module: newSysmonModule()},
 			{icon: "☀", name: "weather", desc: "coming soon", module: nil},
-			{icon: "✶", name: "placeholder", desc: "coming soon", module: nil},
 		},
 		active:    -1,
 		theme:     st.Theme,
@@ -204,6 +211,7 @@ func (r *rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				if r.entries[r.cursor].available() {
 					r.active = r.cursor
+					return r, focusModule // Modul (neu) anstoßen
 				}
 			}
 			return r, nil

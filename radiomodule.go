@@ -316,6 +316,22 @@ func (m *radioModule) Update(msg tea.Msg) (Module, tea.Cmd) {
 		m.restyle()
 		return m, nil
 
+	case focusMsg:
+		// Beim (Wieder-)Öffnen die Ticker neu starten — sie sterben, während
+		// das Modul inaktiv ist.
+		var cmds []tea.Cmd
+		if m.state == stateSearch {
+			cmds = append(cmds, textinput.Blink)
+		}
+		if m.uiPlaying && m.state == statePlayer {
+			cmds = append(cmds, m.fetchMetaCmd(), doTick())
+			if !m.animTicking {
+				m.animTicking = true
+				cmds = append(cmds, animCmd())
+			}
+		}
+		return m, tea.Batch(cmds...)
+
 	case playSuccessMsg:
 		m.connecting = false
 		m.uiPlaying = true

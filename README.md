@@ -5,8 +5,7 @@ internet radio player with a warm, lo-fi aesthetic. Built as a
 [Bubble Tea](https://github.com/charmbracelet/bubbletea) TUI.
 
 The app boots into a small launcher ("what do you wanna do?") and routes into
-modules. Right now there's one real module (internet radio); the architecture
-is set up so more can drop in.
+modules. The architecture is set up so more can drop in.
 
 ## Features
 
@@ -15,6 +14,8 @@ is set up so more can drop in.
   - Inline ICY metadata (now-playing track), animated equalizer
   - Favorites (persisted), session restore (last volume + station), auto-reconnect
   - Mute, volume control, sleep timer (15/30/60 min)
+- **System monitor** — live CPU (overall + per-core), memory, disk, and
+  network throughput with gauges and sparklines
 - **Customizable header** — static text, rotating taglines, marquee, or
   context-aware (scrolls the now-playing track)
 - **Themes** — switchable color palettes (lofi / midnight / sepia / forest /
@@ -107,6 +108,7 @@ module.go        Module interface (Name / Init / Update / View / Status)
 dashboard.go     Root model: launcher, global header, routing to modules
 header.go        Header modes + marquee + config
 radiomodule.go   The radio module (search / list / player)
+sysmon.go        The system-monitor module (gopsutil)
 api.go           Radio Browser API + station type
 store.go         Per-user state persistence (merge-safe writes)
 favorites.go     Favorites helpers
@@ -132,6 +134,7 @@ global header and delegates the rest. Adding a new module is roughly:
 
 ## Roadmap
 
+- [x] System monitor module
 - [ ] Weather module
 - [ ] More modules (it's a dashboard, after all)
 
