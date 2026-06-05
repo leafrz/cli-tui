@@ -48,7 +48,9 @@ type clearFlashMsg struct{}
 type animMsg time.Time
 
 func animCmd() tea.Cmd {
-	return tea.Tick(120*time.Millisecond, func(t time.Time) tea.Msg {
+	// ~12.5 fps – schnell genug für einen flüssigen Visualizer, ruhig genug
+	// für die TUI.
+	return tea.Tick(80*time.Millisecond, func(t time.Time) tea.Msg {
 		return animMsg(t)
 	})
 }
@@ -81,9 +83,11 @@ type radioModule struct {
 	uiVolume   float64
 	uiMuted    bool
 
-	// Animation
-	animFrame   int
+	// Visualizer (echtes Spektrum, geglättet)
 	animTicking bool
+	cardLevels  []float64 // 16 Bänder für die Player-Karte
+	fullLevels  []float64 // breitenabhängig für Vollbild
+	vizFull     bool      // Vollbild-Visualizer
 
 	// QoL
 	connecting  bool      // verbindet gerade -> Spinner statt EQ
@@ -217,6 +221,52 @@ func (m *radioModule) updateUIState() {
 	m.uiMuted = m.radioPlayer.IsMuted()
 }
 
+// bandsForWidth bestimmt die Balkenzahl für das Vollbild (ein Band = 2 Spalten).
+func (m *radioModule) bandsForWidth() int {
+	b := m.width / 2
+	if b < 8 {
+		b = 8
+	}
+	if b > 96 {
+		b = 96
+	}
+	return b
+}
+
+// sampleSpectrum holt das echte Spektrum vom Player und glättet es
+// (Attack sofort, Decay langsam -> fallende Balken). Bei Stille/Pause -> abklingen.
+func (m *radioModule) sampleSpectrum() {
+	apply := func(buf []float64, spec []float64) []float64 {
+		if spec == nil {
+			for i := range buf {
+				buf[i] *= 0.8
+			}
+			return buf
+		}
+		for i := range buf {
+			if spec[i] > buf[i] {
+				buf[i] = spec[i]
+			} else {
+				buf[i] = buf[i]*0.82 + spec[i]*0.18
+			}
+		}
+		return buf
+	}
+
+	if m.vizFull {
+		bands := m.bandsForWidth()
+		if len(m.fullLevels) != bands {
+			m.fullLevels = make([]float64, bands)
+		}
+		m.fullLevels = apply(m.fullLevels, m.radioPlayer.Spectrum(bands))
+	} else {
+		if len(m.cardLevels) != 16 {
+			m.cardLevels = make([]float64, 16)
+		}
+		m.cardLevels = apply(m.cardLevels, m.radioPlayer.Spectrum(16))
+	}
+}
+
 // startPlay startet die Wiedergabe der currentURL inkl. Connecting-Spinner.
 func (m *radioModule) startPlay() tea.Cmd {
 	m.state = statePlayer
@@ -345,8 +395,8 @@ func (m *radioModule) Update(msg tea.Msg) (Module, tea.Cmd) {
 		return m, tea.Batch(batch...)
 
 	case animMsg:
-		m.animFrame++
 		if m.uiPlaying && m.state == statePlayer {
+			m.sampleSpectrum()
 			return m, animCmd()
 		}
 		m.animTicking = false
@@ -460,6 +510,11 @@ func (m *radioModule) Update(msg tea.Msg) (Module, tea.Cmd) {
 		if km, ok := msg.(tea.KeyMsg); ok {
 			switch km.String() {
 			case "esc", "q", "backspace":
+				if m.vizFull {
+					// Erst Vollbild verlassen, Wiedergabe läuft weiter.
+					m.vizFull = false
+					return m, nil
+				}
 				m.radioPlayer.Stop()
 				m.uiPlaying = false
 				m.connecting = false
@@ -481,6 +536,9 @@ func (m *radioModule) Update(msg tea.Msg) (Module, tea.Cmd) {
 
 			case "m":
 				m.radioPlayer.ToggleMute()
+
+			case "v":
+				m.vizFull = !m.vizFull
 
 			case "t":
 				m.cycleSleep()
@@ -568,6 +626,8 @@ func (m *radioModule) View(width, height int) string {
 		m.list.SetSize(width-h, contentHeight-v)
 		content = contentStyle.Render(m.list.View())
 
+	} else if m.vizFull && m.uiPlaying && !m.connecting {
+		content = m.fullVizView(width, contentHeight)
 	} else {
 		playerRendered := m.playerViewRender()
 		content = lipgloss.Place(width, contentHeight,
@@ -609,8 +669,8 @@ func (m *radioModule) playerViewRender() string {
 			m.spinner.View() + " " + m.spinner.View() + " " + m.spinner.View()))
 		midBlock = lipgloss.NewStyle().Height(5).Render(midBlock)
 	} else {
-		eq := renderEQ(m.animFrame, 16, 5, m.uiPaused || m.err != nil)
-		midBlock = center.Render(eq)
+		// Echtes Spektrum (geglättet) aus dem laufenden Audio.
+		midBlock = center.Render(renderBars(m.cardLevels, 5))
 	}
 
 	// Now Playing
@@ -652,9 +712,29 @@ func (m *radioModule) playerViewRender() string {
 
 	card := cardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
 
-	help := helpStyle.Render("space play/pause · +/− vol · m mute · t sleep · f fav · ? help · esc back")
+	help := helpStyle.Render("space play/pause · +/− vol · m mute · v viz · t sleep · f fav · ? help · esc back")
 
 	return lipgloss.JoinVertical(lipgloss.Center, card, "", help)
+}
+
+// fullVizView rendert den bildschirmfüllenden Visualizer (echtes Spektrum).
+func (m *radioModule) fullVizView(width, height int) string {
+	footerH := 2
+	rows := height - footerH
+	if rows < 3 {
+		rows = 3
+	}
+	spectrum := renderSpectrum(m.fullLevels, width, rows)
+
+	track := ""
+	if m.metadata != "" {
+		track = nowPlayingStyle.Render("♫ " + m.metadata)
+	}
+	help := helpStyle.Render("v: exit fullscreen   ·   space: pause   ·   esc: back")
+	bottom := lipgloss.NewStyle().Width(width).Align(lipgloss.Center).Render(
+		lipgloss.JoinVertical(lipgloss.Center, track, help))
+
+	return lipgloss.JoinVertical(lipgloss.Left, spectrum, bottom)
 }
 
 // helpView rendert die MODUL-spezifische Hilfe (nur Radio-Tasten).
@@ -678,6 +758,7 @@ func (m *radioModule) helpView() string {
 			{"space", "play / pause"},
 			{"+ / −", "volume"},
 			{"m", "mute"},
+			{"v", "fullscreen visualizer"},
 			{"t", "sleep timer (15/30/60)"},
 			{"f", "favorite station"},
 			{"esc / q", "back to list"},
