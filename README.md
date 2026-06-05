@@ -20,9 +20,10 @@ modules. The architecture is set up so more can drop in.
   network throughput with gauges and sparklines
 - **Ambient** — a "leave it open" screen: 13 animated scenes (starfield,
   matrix, rain, snow, plasma, life, fireworks, dvd, waves, fire, ripples,
-  spiral, blank), a big block clock, live **weather**, and a now-playing
-  line when the radio is going. Jump here from the radio with `a` and the
-  music keeps playing.
+  spiral, blank) with optional auto-rotate, a big block clock, live
+  **weather**, and a now-playing line + mini-spectrum when the radio is
+  going. Jump here from the radio with `a` (music keeps playing), and the
+  whole app auto-screensavers into it after a couple minutes idle.
 - **Customizable header** — static text, rotating taglines, marquee, or
   context-aware (scrolls the now-playing track)
 - **Themes** — switchable color palettes (lofi / midnight / sepia / forest /
@@ -92,9 +93,15 @@ go build -o lofi-radio .
 |-----|--------|
 | `space` / `s` | Next scene |
 | `S` | Previous scene |
+| `r` | Auto-rotate scenes (every ~30s) |
 | `c` | Toggle clock |
+| `h` | 12 / 24-hour clock |
 | `w` | Set weather location (type a city, or empty for auto) |
 | `esc` | Back to dashboard |
+
+The dashboard also **auto-drops into ambient after ~2 min of no input** (a
+real screensaver); any key wakes it back to where you were. Ambient remembers
+your last scene + clock settings.
 
 Press `?` inside a module for module-specific help.
 
@@ -130,6 +137,19 @@ the `weather` block in `state.json`:
 
 Weather data itself always comes from Open-Meteo over the network — there's no
 offline weather source. Manual mode only removes the *location* lookup.
+
+### Ambient / screensaver
+
+The `ambient` block remembers your scene + clock prefs and configures the
+auto-screensaver:
+
+```json
+"ambient": { "scene": "plasma", "hide_clock": false, "clock12": false,
+             "rotate": false, "idle_off": false, "idle_secs": 120 }
+```
+
+- `idle_secs` — seconds of no input before auto-screensaver (default 120)
+- `idle_off: true` — disable the auto-screensaver entirely
 
 ### Debugging
 

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 )
 
 // persistedState ist der auf Platte gespeicherte Zustand.
@@ -15,6 +16,31 @@ type persistedState struct {
 	Header      headerConfig  `json:"header"`
 	Theme       string        `json:"theme"`
 	Weather     weatherConfig `json:"weather"`
+	Ambient     ambientConfig `json:"ambient"`
+}
+
+// ambientConfig merkt sich Ambient-Vorlieben. Bools sind so gewählt, dass der
+// Zero-Value die sinnvollen Defaults ergibt (Uhr an, 24h, kein Auto-Rotate,
+// Idle-Screensaver an mit 120s).
+type ambientConfig struct {
+	Scene     string `json:"scene"`
+	HideClock bool   `json:"hide_clock"`
+	Clock12   bool   `json:"clock12"`
+	Rotate    bool   `json:"rotate"`
+	IdleOff   bool   `json:"idle_off"`
+	IdleSecs  int    `json:"idle_secs"` // <=0 -> 120
+}
+
+// idleTimeout liefert die Inaktivitätsdauer bis zum Auto-Screensaver (0 = aus).
+func (c ambientConfig) idleTimeout() time.Duration {
+	if c.IdleOff {
+		return 0
+	}
+	s := c.IdleSecs
+	if s <= 0 {
+		s = 120
+	}
+	return time.Duration(s) * time.Second
 }
 
 // weatherConfig steuert die Standortquelle für das Wetter.

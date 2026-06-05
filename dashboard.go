@@ -22,6 +22,13 @@ func headerTickCmd(animated bool) tea.Cmd {
 	return tea.Tick(d, func(t time.Time) tea.Msg { return headerTickMsg(t) })
 }
 
+// idleTickMsg prüft im Sekundentakt auf Inaktivität (Auto-Screensaver).
+type idleTickMsg time.Time
+
+func idleTick() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg { return idleTickMsg(t) })
+}
+
 // goToLauncherMsg bringt das Dashboard zurück zum Startmenü.
 type goToLauncherMsg struct{}
 
@@ -76,6 +83,13 @@ type rootModel struct {
 	// In-App Header-Editor
 	editing   bool
 	editInput textinput.Model
+
+	// Auto-Screensaver (Idle)
+	lastInput   time.Time
+	idleActive  bool
+	prevActive  int
+	idleTimeout time.Duration
+	ambientIdx  int
 }
 
 func newRoot() *rootModel {
@@ -92,18 +106,27 @@ func newRoot() *rootModel {
 	ei.CharLimit = 80
 	ei.Width = 40
 
-	return &rootModel{
+	r := &rootModel{
 		entries: []launcherEntry{
 			{icon: "📻", name: "internet radio", desc: "stream stations worldwide", module: newRadioModule(player)},
 			{icon: "📊", name: "system monitor", desc: "cpu · memory · disk · network", module: newSysmonModule()},
 			{icon: "🌌", name: "ambient", desc: "screensaver + clock + weather", module: newAmbientModule(player)},
 			{icon: "☀", name: "weather", desc: "coming soon", module: nil},
 		},
-		active:    -1,
-		theme:     st.Theme,
-		header:    st.Header.withDefaults(),
-		editInput: ei,
+		active:      -1,
+		theme:       st.Theme,
+		header:      st.Header.withDefaults(),
+		editInput:   ei,
+		lastInput:   time.Now(),
+		idleTimeout: st.Ambient.idleTimeout(),
+		ambientIdx:  -1,
 	}
+	for i := range r.entries {
+		if r.entries[i].name == "ambient" {
+			r.ambientIdx = i
+		}
+	}
+	return r
 }
 
 func (r *rootModel) inLauncher() bool { return r.active < 0 }
@@ -123,6 +146,7 @@ func (r *rootModel) Init() tea.Cmd {
 		}
 	}
 	cmds = append(cmds, headerTickCmd(r.header.animated()))
+	cmds = append(cmds, idleTick())
 	return tea.Batch(cmds...)
 }
 
@@ -145,6 +169,16 @@ func (r *rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case headerTickMsg:
 		r.headerFrame++
 		return r, headerTickCmd(r.header.animated())
+
+	case idleTickMsg:
+		if r.idleTimeout > 0 && r.ambientIdx >= 0 && !r.idleActive && !r.editing &&
+			r.active != r.ambientIdx && time.Since(r.lastInput) > r.idleTimeout {
+			r.prevActive = r.active
+			r.active = r.ambientIdx
+			r.idleActive = true
+			return r, tea.Batch(focusModule, idleTick())
+		}
+		return r, idleTick()
 
 	case goToLauncherMsg:
 		r.active = -1
@@ -173,6 +207,14 @@ func (r *rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		key := msg.String()
+		r.lastInput = time.Now()
+
+		// Auto-Screensaver aktiv? Erste Taste weckt nur auf (keine Aktion).
+		if r.idleActive {
+			r.idleActive = false
+			r.active = r.prevActive
+			return r, focusModule
+		}
 
 		// 1) Header-Editor hat Vorrang.
 		if r.editing {
