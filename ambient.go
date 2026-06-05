@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
@@ -97,17 +98,32 @@ type ambientModule struct {
 	scenes []scene
 
 	// weather
+	weatherCfg      weatherConfig
 	weatherLine     string
 	weatherAt       time.Time
 	weatherFetching bool
+
+	// location editor
+	editing   bool
+	editInput textinput.Model
 }
 
 func newAmbientModule(p *radio.Player) *ambientModule {
+	ei := textinput.New()
+	ei.Prompt = "› "
+	ei.Placeholder = "city (empty = auto by IP)"
+	ei.PromptStyle = lipgloss.NewStyle().Foreground(colTeal)
+	ei.TextStyle = lipgloss.NewStyle().Foreground(colCream)
+	ei.CharLimit = 60
+	ei.Width = 36
+
 	return &ambientModule{
-		player:    p,
-		rng:       rand.New(rand.NewSource(time.Now().UnixNano())),
-		showClock: true,
-		scenes:    buildScenes(),
+		player:     p,
+		rng:        rand.New(rand.NewSource(time.Now().UnixNano())),
+		showClock:  true,
+		scenes:     buildScenes(),
+		weatherCfg: loadState().Weather,
+		editInput:  ei,
 	}
 }
 
@@ -117,7 +133,7 @@ func (m *ambientModule) Init() tea.Cmd  { return nil }
 
 // shouldFetchWeather: Backoff 20s bei Fehlschlag, sonst alle 15 Minuten.
 func (m *ambientModule) shouldFetchWeather() bool {
-	if m.weatherFetching {
+	if m.weatherFetching || m.weatherCfg.Mode == "off" {
 		return false
 	}
 	interval := 15 * time.Minute
@@ -133,7 +149,16 @@ func (m *ambientModule) maybeWeather() tea.Cmd {
 	}
 	m.weatherFetching = true
 	m.weatherAt = time.Now()
-	return weatherCmd()
+	return weatherCmd(m.weatherCfg)
+}
+
+// persistWeatherCmd speichert NUR die Wetter-Config (merge).
+func (m *ambientModule) persistWeatherCmd() tea.Cmd {
+	cfg := m.weatherCfg
+	return func() tea.Msg {
+		_ = updateState(func(s *persistedState) { s.Weather = cfg })
+		return nil
+	}
 }
 
 func (m *ambientModule) Update(msg tea.Msg) (Module, tea.Cmd) {
@@ -170,6 +195,30 @@ func (m *ambientModule) Update(msg tea.Msg) (Module, tea.Cmd) {
 
 	case tea.KeyMsg:
 		k := msg.String()
+
+		// Standort-Editor hat Vorrang.
+		if m.editing {
+			switch k {
+			case "enter":
+				val := strings.TrimSpace(m.editInput.Value())
+				if val == "" {
+					m.weatherCfg.Mode, m.weatherCfg.City = "auto", ""
+				} else {
+					m.weatherCfg.Mode, m.weatherCfg.City = "manual", val
+				}
+				m.editing = false
+				m.weatherLine = ""        // sichtbares Refetch erzwingen
+				m.weatherAt = time.Time{} // shouldFetch true
+				return m, tea.Batch(m.persistWeatherCmd(), m.maybeWeather())
+			case "esc":
+				m.editing = false
+				return m, nil
+			}
+			var cmd tea.Cmd
+			m.editInput, cmd = m.editInput.Update(msg)
+			return m, cmd
+		}
+
 		if m.showHelp {
 			if k == "esc" || k == "?" || k == "q" {
 				m.showHelp = false
@@ -188,6 +237,12 @@ func (m *ambientModule) Update(msg tea.Msg) (Module, tea.Cmd) {
 			m.style = (m.style - 1 + len(m.scenes)) % len(m.scenes)
 		case "c":
 			m.showClock = !m.showClock
+		case "w":
+			m.editing = true
+			m.editInput.SetValue(m.weatherCfg.City)
+			m.editInput.CursorEnd()
+			m.editInput.Focus()
+			return m, textinput.Blink
 		}
 	}
 	return m, nil
@@ -199,6 +254,9 @@ func (m *ambientModule) advance() {
 
 func (m *ambientModule) View(width, height int) string {
 	m.width, m.height = width, height
+	if m.editing {
+		return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, m.locationEditorView())
+	}
 	if m.showHelp {
 		return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, m.helpView())
 	}
@@ -212,11 +270,19 @@ func (m *ambientModule) View(width, height int) string {
 		m.drawClock(g)
 	}
 
-	hint := "space: scene · c: clock · ?: help · esc: dashboard   (" +
+	hint := "space: scene · c: clock · w: location · ?: help · esc: dashboard   (" +
 		m.scenes[m.style].name() + ")"
 	g.stampText(centerX(width, hint), height-1, hint, colDim)
 
 	return g.render()
+}
+
+func (m *ambientModule) locationEditorView() string {
+	prompt := labelStyle.Render("weather location")
+	input := lipgloss.NewStyle().Width(38).Render(m.editInput.View())
+	hint := helpStyle.Render("enter: save   ·   empty = auto by IP   ·   esc: cancel")
+	card := cardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, prompt, "", input))
+	return lipgloss.JoinVertical(lipgloss.Center, card, "", hint)
 }
 
 // centerX liefert die linke Startspalte, um s (nach Runen) zu zentrieren.
@@ -318,6 +384,7 @@ func (m *ambientModule) helpView() string {
 			{"space / s", "next scene"},
 			{"S", "previous scene"},
 			{"c", "toggle clock"},
+			{"w", "set weather location (city / auto)"},
 			{"esc / q", "back to dashboard"},
 			{"?", "toggle this help"},
 		}},

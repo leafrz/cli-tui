@@ -9,11 +9,20 @@ import (
 
 // persistedState ist der auf Platte gespeicherte Zustand.
 type persistedState struct {
-	Favorites   []station    `json:"favorites"`
-	LastVolume  float64      `json:"last_volume"`
-	LastStation *station     `json:"last_station,omitempty"`
-	Header      headerConfig `json:"header"`
-	Theme       string       `json:"theme"`
+	Favorites   []station     `json:"favorites"`
+	LastVolume  float64       `json:"last_volume"`
+	LastStation *station      `json:"last_station,omitempty"`
+	Header      headerConfig  `json:"header"`
+	Theme       string        `json:"theme"`
+	Weather     weatherConfig `json:"weather"`
+}
+
+// weatherConfig steuert die Standortquelle für das Wetter.
+type weatherConfig struct {
+	Mode string  `json:"mode"` // "auto" (IP), "manual" (City/Lat+Lon), "off"
+	City string  `json:"city"`
+	Lat  float64 `json:"lat"`
+	Lon  float64 `json:"lon"`
 }
 
 var storeMu sync.Mutex
@@ -51,6 +60,9 @@ func loadState() persistedState {
 	s.Header = s.Header.withDefaults()
 	if s.Theme == "" {
 		s.Theme = themes[0].name
+	}
+	if s.Weather.Mode == "" {
+		s.Weather.Mode = "auto"
 	}
 	return s
 }

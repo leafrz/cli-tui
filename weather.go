@@ -4,17 +4,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// weatherMsg trägt die formatierte Wetterzeile (leer = nicht verfügbar).
+// weatherMsg trägt die formatierte Wetterzeile (leer = nicht verfügbar/aus).
 type weatherMsg struct{ text string }
 
-func weatherCmd() tea.Cmd {
+func weatherCmd(cfg weatherConfig) tea.Cmd {
 	return func() tea.Msg {
-		text, err := fetchWeather()
+		if cfg.Mode == "off" {
+			return weatherMsg{text: ""}
+		}
+		text, err := fetchWeather(cfg)
 		if err != nil {
 			return weatherMsg{text: ""}
 		}
@@ -22,9 +26,24 @@ func weatherCmd() tea.Cmd {
 	}
 }
 
-// fetchWeather: IP-Geolokalisierung (ip-api, ohne Key) + Open-Meteo (ohne Key).
-func fetchWeather() (string, error) {
-	lat, lon, city, err := geolocate()
+// fetchWeather ermittelt den Standort gemäß cfg und holt das aktuelle Wetter
+// von Open-Meteo (immer ohne API-Key).
+func fetchWeather(cfg weatherConfig) (string, error) {
+	var lat, lon float64
+	var city string
+	var err error
+
+	switch cfg.Mode {
+	case "manual":
+		if cfg.City != "" {
+			// Geokodierung über Open-Meteo selbst -> kein ip-api nötig.
+			lat, lon, city, err = geocodeCity(cfg.City)
+		} else {
+			lat, lon = cfg.Lat, cfg.Lon // feste Koordinaten, ohne Ortsnamen
+		}
+	default: // "auto"
+		lat, lon, city, err = geolocate()
+	}
 	if err != nil {
 		return "", err
 	}
@@ -51,12 +70,15 @@ func fetchWeather() (string, error) {
 	}
 
 	icon, desc := weatherCodeInfo(data.Current.Code)
-	return fmt.Sprintf("%s  %.0f°C · %s · %s", icon, data.Current.Temp, desc, city), nil
+	if city != "" {
+		return fmt.Sprintf("%s  %.0f°C · %s · %s", icon, data.Current.Temp, desc, city), nil
+	}
+	return fmt.Sprintf("%s  %.0f°C · %s", icon, data.Current.Temp, desc), nil
 }
 
+// geolocate ermittelt den Standort grob über die öffentliche IP (ip-api, ohne Key).
 func geolocate() (lat, lon float64, city string, err error) {
 	client := http.Client{Timeout: 5 * time.Second}
-	// ip-api: kostenloser Plan nur über http.
 	resp, err := client.Get("http://ip-api.com/json/?fields=status,lat,lon,city")
 	if err != nil {
 		return 0, 0, "", err
@@ -76,6 +98,36 @@ func geolocate() (lat, lon float64, city string, err error) {
 		return 0, 0, "", fmt.Errorf("geolocation failed")
 	}
 	return data.Lat, data.Lon, data.City, nil
+}
+
+// geocodeCity wandelt einen Ortsnamen über Open-Meteo in Koordinaten um.
+func geocodeCity(name string) (lat, lon float64, city string, err error) {
+	u := "https://geocoding-api.open-meteo.com/v1/search?count=1&language=en&name=" +
+		url.QueryEscape(name)
+
+	client := http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(u)
+	if err != nil {
+		return 0, 0, "", err
+	}
+	defer resp.Body.Close()
+
+	var data struct {
+		Results []struct {
+			Lat     float64 `json:"latitude"`
+			Lon     float64 `json:"longitude"`
+			Name    string  `json:"name"`
+			Country string  `json:"country_code"`
+		} `json:"results"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return 0, 0, "", err
+	}
+	if len(data.Results) == 0 {
+		return 0, 0, "", fmt.Errorf("city %q not found", name)
+	}
+	r := data.Results[0]
+	return r.Lat, r.Lon, r.Name, nil
 }
 
 // weatherCodeInfo bildet WMO-Codes auf Icon + Kurzbeschreibung ab.

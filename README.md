@@ -93,6 +93,7 @@ go build -o lofi-radio .
 | `space` / `s` | Next scene |
 | `S` | Previous scene |
 | `c` | Toggle clock |
+| `w` | Set weather location (type a city, or empty for auto) |
 | `esc` | Back to dashboard |
 
 Press `?` inside a module for module-specific help.
@@ -108,9 +109,27 @@ User state is stored as JSON in your OS config directory (never in the repo):
 | Linux | `~/.config/lofi-radio/state.json` |
 
 It holds favorites, last volume, last station, the header config (mode,
-custom text, taglines), and the selected theme. Delete the file to reset to
-defaults. You can also edit `taglines` by hand for the rotating/marquee header
-modes.
+custom text, taglines), the selected theme, and the weather location. Delete
+the file to reset to defaults. You can also edit `taglines` by hand for the
+rotating/marquee header modes.
+
+### Weather location
+
+The ambient module shows live weather (via [Open-Meteo](https://open-meteo.com),
+no API key). Location is configurable — press `w` in the ambient module, or edit
+the `weather` block in `state.json`:
+
+```json
+"weather": { "mode": "auto", "city": "", "lat": 0, "lon": 0 }
+```
+
+- `mode: "auto"` — locate by public IP (one call to `ip-api.com`)
+- `mode: "manual"` with a `city` — geocoded via Open-Meteo (no IP lookup)
+- `mode: "manual"` with `lat`/`lon` — fixed coordinates, no lookup at all
+- `mode: "off"` — no weather, no network calls
+
+Weather data itself always comes from Open-Meteo over the network — there's no
+offline weather source. Manual mode only removes the *location* lookup.
 
 ### Debugging
 
