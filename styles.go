@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"math"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -150,54 +149,83 @@ func eqRowColor(cellFromBottom, height int) lipgloss.Color {
 	}
 }
 
-func renderEQ(frame, bars, height int, paused bool) string {
-	levels := make([]float64, bars)
-	for i := range levels {
-		if paused {
-			levels[i] = 0.08
-			continue
-		}
-		f := float64(frame)
-		v := 0.5 + 0.5*math.Sin(f*0.25+float64(i)*0.6)
-		v *= 0.55 + 0.45*math.Abs(math.Sin(f*0.11+float64(i)*0.9))
-		if v < 0 {
-			v = 0
-		}
-		if v > 1 {
-			v = 1
-		}
-		levels[i] = v
+// barRune liefert das passende Block-Zeichen für einen Balken der Höhe level
+// (0..1) in der gegebenen Zelle (von unten gezählt).
+func barRune(level float64, cellFromBottom, height int) rune {
+	barH := level * float64(height)
+	lower := float64(cellFromBottom - 1)
+	if barH >= float64(cellFromBottom) {
+		return '█'
 	}
+	if barH > lower {
+		idx := int((barH - lower) * float64(len(eqRunes)-1))
+		if idx < 0 {
+			idx = 0
+		}
+		if idx > len(eqRunes)-1 {
+			idx = len(eqRunes) - 1
+		}
+		return eqRunes[idx]
+	}
+	return ' '
+}
 
+// renderBars zeichnet kompakte Balken (ein Band = 1 Spalte + Lücke) über height
+// Zeilen, eingefärbt nach Höhe. Für echte Spektrum-Pegel (0..1).
+//
+// WICHTIG: jede Zeile behält die volle Breite (kein TrimRight). Sonst wären die
+// Zeilen unterschiedlich breit und würden beim Zentrieren versetzt ausgerichtet
+// -> verrutschte Balken.
+func renderBars(levels []float64, height int) string {
+	if height < 1 {
+		height = 1
+	}
+	if len(levels) == 0 {
+		return strings.Repeat("\n", height-1) // stabile Höhe, leer
+	}
 	rows := make([]string, height)
 	for r := 0; r < height; r++ {
-		cellFromBottom := height - r // 1 (bottom) .. height (top)
-		color := eqRowColor(cellFromBottom, height)
-		cellStyle := lipgloss.NewStyle().Foreground(color)
-
+		cellFromBottom := height - r
+		style := lipgloss.NewStyle().Foreground(eqRowColor(cellFromBottom, height))
 		var line strings.Builder
-		for i := 0; i < bars; i++ {
-			barH := levels[i] * float64(height) // in cells
-			lower := float64(cellFromBottom - 1)
-
-			ch := ' '
-			if barH >= float64(cellFromBottom) {
-				ch = '█'
-			} else if barH > lower {
-				frac := barH - lower // 0..1 within this cell
-				idx := int(frac * float64(len(eqRunes)-1))
-				if idx < 0 {
-					idx = 0
-				}
-				if idx > len(eqRunes)-1 {
-					idx = len(eqRunes) - 1
-				}
-				ch = eqRunes[idx]
+		for i, lv := range levels {
+			if i > 0 {
+				line.WriteByte(' ') // Lücke zwischen Balken
 			}
-			line.WriteString(cellStyle.Render(string(ch)))
-			line.WriteByte(' ')
+			if ch := barRune(lv, cellFromBottom, height); ch == ' ' {
+				line.WriteByte(' ')
+			} else {
+				line.WriteString(style.Render(string(ch)))
+			}
 		}
-		rows[r] = strings.TrimRight(line.String(), " ")
+		rows[r] = line.String()
 	}
 	return strings.Join(rows, "\n")
+}
+
+// renderSpectrum zeichnet ein bildschirmfüllendes Spektrum (ein Band = 2 Spalten).
+func renderSpectrum(levels []float64, width, height int) string {
+	if len(levels) == 0 || width < 1 || height < 1 {
+		return ""
+	}
+	out := make([]string, height)
+	for r := 0; r < height; r++ {
+		cellFromBottom := height - r
+		style := lipgloss.NewStyle().Foreground(eqRowColor(cellFromBottom, height))
+		var line strings.Builder
+		col := 0
+		for _, lv := range levels {
+			if col >= width {
+				break
+			}
+			if ch := barRune(lv, cellFromBottom, height); ch == ' ' {
+				line.WriteString("  ")
+			} else {
+				line.WriteString(style.Render(string(ch)) + " ")
+			}
+			col += 2
+		}
+		out[r] = line.String()
+	}
+	return strings.Join(out, "\n")
 }

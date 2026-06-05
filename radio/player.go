@@ -55,6 +55,7 @@ type Player struct {
 	cancel   context.CancelFunc
 	httpResp *http.Response
 	buffered *bufferedStreamer
+	meter    *meter
 }
 
 func NewPlayer() *Player {
@@ -105,6 +106,19 @@ func (p *Player) SetVolume(level float64) {
 // (Verbindungsabbruch). Die UI nutzt das für Auto-Reconnect.
 func (p *Player) Ended() bool {
 	return p.ended.Load()
+}
+
+// Spectrum liefert ein normalisiertes Frequenzspektrum (bands Werte, 0..1) aus
+// dem aktuell laufenden Audio. nil, wenn nichts spielt.
+func (p *Player) Spectrum(bands int) []float64 {
+	p.mu.RLock()
+	m := p.meter
+	playing := p.isPlaying && !p.isPaused
+	p.mu.RUnlock()
+	if m == nil || !playing {
+		return nil
+	}
+	return m.spectrum(bands)
 }
 
 // GetMetadata gibt den zuletzt inline gelesenen Titel zurück (kein Netzwerk).
@@ -224,8 +238,13 @@ func (p *Player) Play(streamURL string) error {
 		audioStream = beep.Resample(4, format.SampleRate, SampleRate, buffered)
 	}
 
+	// Meter für den Echtzeit-Visualizer (tappt das Quell-Audio vor Volume,
+	// damit es unabhängig von Lautstärke/Mute reagiert). 1024 = Zweierpotenz
+	// für die FFT.
+	mtr := newMeter(audioStream, 1024)
+
 	gate := &NoiseGate{
-		Streamer:    audioStream,
+		Streamer:    mtr,
 		Threshold:   threshold,
 		holdSamples: SampleRate.N(200 * time.Millisecond),
 	}
@@ -242,6 +261,7 @@ func (p *Player) Play(streamURL string) error {
 	}
 	p.httpResp = resp
 	p.buffered = buffered
+	p.meter = mtr
 	p.volume = &effects.Volume{Streamer: gate, Base: 2, Volume: 0, Silent: false}
 	p.applyVolumeInternal()
 	p.ctrl = &beep.Ctrl{Streamer: p.volume, Paused: false}
@@ -280,6 +300,7 @@ func (p *Player) stopInternal() {
 		p.buffered.Close()
 		p.buffered = nil
 	}
+	p.meter = nil
 	if p.httpResp != nil {
 		p.httpResp.Body.Close()
 		p.httpResp = nil

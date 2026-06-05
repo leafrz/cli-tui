@@ -7,6 +7,8 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/leafrz/dashboard/radio"
 )
 
 // headerTickMsg treibt Header-Animationen (rotate/marquee/context) und die Uhr.
@@ -73,6 +75,9 @@ func newRoot() *rootModel {
 	st := loadState()
 	applyTheme(themeByName(st.Theme)) // Palette setzen, bevor irgendwas rendert
 
+	// Ein geteilter Player für Radio + Visualizer.
+	player := radio.NewPlayer()
+
 	ei := textinput.New()
 	ei.Prompt = "› "
 	ei.PromptStyle = lipgloss.NewStyle().Foreground(colTeal)
@@ -82,7 +87,7 @@ func newRoot() *rootModel {
 
 	return &rootModel{
 		entries: []launcherEntry{
-			{icon: "📻", name: "internet radio", desc: "stream stations worldwide", module: newRadioModule()},
+			{icon: "📻", name: "internet radio", desc: "stream stations worldwide", module: newRadioModule(player)},
 			{icon: "📊", name: "system monitor", desc: "cpu · memory · disk · network", module: newSysmonModule()},
 			{icon: "☀", name: "weather", desc: "coming soon", module: nil},
 		},
