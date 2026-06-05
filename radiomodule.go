@@ -154,39 +154,20 @@ func (m *radioModule) Init() tea.Cmd {
 	// Spinner (Verbinden/Suchen)
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
-	sp.Style = lipgloss.NewStyle().Foreground(colTeal)
 	m.spinner = sp
 
-	// 1. Text Input konfigurieren
+	// 1. Text Input konfigurieren (Struktur; Farben via restyle)
 	ti := textinput.New()
 	ti.Placeholder = "techno, rock, jazz… or leave empty"
 	ti.Prompt = "› "
-	ti.PromptStyle = lipgloss.NewStyle().Foreground(colTeal)
-	ti.TextStyle = lipgloss.NewStyle().Foreground(colCream)
-	ti.PlaceholderStyle = lipgloss.NewStyle().Foreground(colFaint)
-	ti.Cursor.Style = lipgloss.NewStyle().Foreground(colPeach)
 	ti.Focus()
 	ti.CharLimit = 156
 	ti.Width = 40
 	m.textInput = ti
 
-	// 2. Leere Liste initialisieren (lo-fi getönt)
-	delegate := list.NewDefaultDelegate()
-	delegate.Styles.SelectedTitle = delegate.Styles.SelectedTitle.
-		Foreground(colPeach).BorderForeground(colMauve)
-	delegate.Styles.SelectedDesc = delegate.Styles.SelectedDesc.
-		Foreground(colMauve).BorderForeground(colMauve)
-	delegate.Styles.NormalTitle = delegate.Styles.NormalTitle.Foreground(colCream)
-	delegate.Styles.NormalDesc = delegate.Styles.NormalDesc.Foreground(colDim)
-	delegate.Styles.DimmedTitle = delegate.Styles.DimmedTitle.Foreground(colDim)
-	delegate.Styles.DimmedDesc = delegate.Styles.DimmedDesc.Foreground(colFaint)
-
-	m.list = list.New([]list.Item{}, delegate, 0, 0)
+	// 2. Leere Liste initialisieren
+	m.list = list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
 	m.list.Title = "Suchergebnisse"
-	m.list.Styles.Title = m.list.Styles.Title.
-		Background(colPurple).Foreground(colCream).Bold(true)
-	m.list.Styles.FilterPrompt = m.list.Styles.FilterPrompt.Foreground(colTeal)
-	m.list.Styles.FilterCursor = m.list.Styles.FilterCursor.Foreground(colPeach)
 
 	// Eigene Tasten in die Hilfe-Leiste der Liste einblenden.
 	m.list.AdditionalShortHelpKeys = func() []key.Binding {
@@ -197,9 +178,38 @@ func (m *radioModule) Init() tea.Cmd {
 		}
 	}
 
+	m.restyle() // Farben der Komponenten an das aktuelle Theme anpassen
+
 	m.state = stateSearch // Wir starten im Suchmodus
 
 	return textinput.Blink
+}
+
+// restyle wendet die aktuelle Palette auf die Bubbles-Komponenten an
+// (Spinner, Eingabe, Liste). Wird bei Init und bei Theme-Wechsel aufgerufen.
+func (m *radioModule) restyle() {
+	m.spinner.Style = lipgloss.NewStyle().Foreground(colTeal)
+
+	m.textInput.PromptStyle = lipgloss.NewStyle().Foreground(colTeal)
+	m.textInput.TextStyle = lipgloss.NewStyle().Foreground(colCream)
+	m.textInput.PlaceholderStyle = lipgloss.NewStyle().Foreground(colFaint)
+	m.textInput.Cursor.Style = lipgloss.NewStyle().Foreground(colPeach)
+
+	delegate := list.NewDefaultDelegate()
+	delegate.Styles.SelectedTitle = delegate.Styles.SelectedTitle.
+		Foreground(colPeach).BorderForeground(colMauve)
+	delegate.Styles.SelectedDesc = delegate.Styles.SelectedDesc.
+		Foreground(colMauve).BorderForeground(colMauve)
+	delegate.Styles.NormalTitle = delegate.Styles.NormalTitle.Foreground(colCream)
+	delegate.Styles.NormalDesc = delegate.Styles.NormalDesc.Foreground(colDim)
+	delegate.Styles.DimmedTitle = delegate.Styles.DimmedTitle.Foreground(colDim)
+	delegate.Styles.DimmedDesc = delegate.Styles.DimmedDesc.Foreground(colFaint)
+	m.list.SetDelegate(delegate)
+
+	m.list.Styles.Title = lipgloss.NewStyle().
+		Padding(0, 1).Background(colPurple).Foreground(colCream).Bold(true)
+	m.list.Styles.FilterPrompt = lipgloss.NewStyle().Foreground(colTeal)
+	m.list.Styles.FilterCursor = lipgloss.NewStyle().Foreground(colPeach)
 }
 
 func (m *radioModule) updateUIState() {
@@ -300,6 +310,10 @@ func (m *radioModule) Update(msg tea.Msg) (Module, tea.Cmd) {
 		if time.Now().After(m.flashUntil) {
 			m.flash = ""
 		}
+		return m, nil
+
+	case themeChangedMsg:
+		m.restyle()
 		return m, nil
 
 	case playSuccessMsg:

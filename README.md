@@ -17,7 +17,8 @@ is set up so more can drop in.
   - Mute, volume control, sleep timer (15/30/60 min)
 - **Customizable header** — static text, rotating taglines, marquee, or
   context-aware (scrolls the now-playing track)
-- **Lo-fi theme** — warm, muted palette; rounded cards; gradient meters
+- **Themes** — switchable color palettes (lofi / midnight / sepia / forest /
+  rosepine / nord / noir), applied live and persisted
 - Per-user state stored outside the repo (favorites, header text, etc.)
 
 ## Requirements
@@ -55,6 +56,7 @@ go build -o lofi-radio .
 | `enter` | Open module |
 | `ctrl+t` | Cycle header mode (static → rotate → marquee → context) |
 | `ctrl+e` | Edit header text |
+| `ctrl+p` | Cycle theme (7 palettes: lofi, midnight, sepia, forest, rosepine, nord, noir) |
 | `?` | Global help |
 | `ctrl+c` | Quit |
 
@@ -87,9 +89,10 @@ User state is stored as JSON in your OS config directory (never in the repo):
 | macOS | `~/Library/Application Support/lofi-radio/state.json` |
 | Linux | `~/.config/lofi-radio/state.json` |
 
-It holds favorites, last volume, last station, and the header config (mode,
-custom text, taglines). Delete the file to reset to defaults. You can also
-edit `taglines` by hand for the rotating/marquee header modes.
+It holds favorites, last volume, last station, the header config (mode,
+custom text, taglines), and the selected theme. Delete the file to reset to
+defaults. You can also edit `taglines` by hand for the rotating/marquee header
+modes.
 
 ### Debugging
 
@@ -107,7 +110,8 @@ radiomodule.go   The radio module (search / list / player)
 api.go           Radio Browser API + station type
 store.go         Per-user state persistence (merge-safe writes)
 favorites.go     Favorites helpers
-styles.go        Lo-fi theme + shared UI components (EQ, volume bar, help)
+styles.go        Palette + shared UI components (EQ, volume bar, help)
+themes.go        Theme definitions + live palette switching
 radio/           Audio engine: streaming, decode, ICY metadata, noise gate
 ```
 

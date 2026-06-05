@@ -13,6 +13,7 @@ type persistedState struct {
 	LastVolume  float64      `json:"last_volume"`
 	LastStation *station     `json:"last_station,omitempty"`
 	Header      headerConfig `json:"header"`
+	Theme       string       `json:"theme"`
 }
 
 var storeMu sync.Mutex
@@ -30,7 +31,7 @@ func statePath() (string, error) {
 // loadState lädt den persistenten Zustand. Fehlt die Datei, gibt es einen
 // sinnvollen Default zurück (kein Fehler).
 func loadState() persistedState {
-	def := persistedState{LastVolume: 1.0, Header: defaultHeaderConfig()}
+	def := persistedState{LastVolume: 1.0, Header: defaultHeaderConfig(), Theme: themes[0].name}
 
 	path, err := statePath()
 	if err != nil {
@@ -48,6 +49,9 @@ func loadState() persistedState {
 		s.LastVolume = 1.0
 	}
 	s.Header = s.Header.withDefaults()
+	if s.Theme == "" {
+		s.Theme = themes[0].name
+	}
 	return s
 }
 
