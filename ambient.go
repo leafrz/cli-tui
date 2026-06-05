@@ -258,6 +258,22 @@ func (m *ambientModule) Update(msg tea.Msg) (Module, tea.Cmd) {
 		}
 		return m, nil
 
+	case reloadConfigMsg:
+		st := loadState()
+		m.weatherCfg = st.Weather
+		m.cfg = st.Ambient
+		m.showClock = !st.Ambient.HideClock
+		m.clock24 = !st.Ambient.Clock12
+		m.autoRotate = st.Ambient.Rotate
+		for i, sc := range m.scenes {
+			if sc.name() == st.Ambient.Scene {
+				m.style = i
+			}
+		}
+		m.weatherLine = ""
+		m.weatherAt = time.Time{} // beim nächsten Tick/Focus neu holen (oder aus)
+		return m, nil
+
 	case tea.KeyMsg:
 		k := msg.String()
 

@@ -26,6 +26,8 @@ modules. The architecture is set up so more can drop in.
   whole app auto-screensavers into it after a couple minutes idle.
 - **Customizable header** — static text, rotating taglines, marquee, or
   context-aware (scrolls the now-playing track)
+- **Settings page** — a dashboard module to configure theme, header, weather
+  (incl. turning it off), and the screensaver, all live + persisted
 - **Themes** — switchable color palettes (lofi / midnight / sepia / forest /
   rosepine / nord / noir), applied live and persisted
 - Per-user state stored outside the repo (favorites, header text, etc.)
@@ -123,8 +125,9 @@ rotating/marquee header modes.
 ### Weather location
 
 The ambient module shows live weather (via [Open-Meteo](https://open-meteo.com),
-no API key). Location is configurable — press `w` in the ambient module, or edit
-the `weather` block in `state.json`:
+no API key). Configure it in the **settings** module (including turning it
+**off**), press `w` in the ambient module, or edit the `weather` block in
+`state.json`:
 
 ```json
 "weather": { "mode": "auto", "city": "", "lat": 0, "lon": 0 }
@@ -167,6 +170,7 @@ radiomodule.go   The radio module (search / list / player)
 sysmon.go        The system-monitor module (gopsutil)
 ambient.go       The ambient module (compositor, clock, weather, now-playing)
 scenes.go        The 13 ambient scenes (scene interface)
+settings.go      The settings module (live config, reloadConfigMsg)
 weather.go       IP geolocation + Open-Meteo (no API key)
 radio/meter.go   Audio tap + FFT powering the visualizer
 api.go           Radio Browser API + station type

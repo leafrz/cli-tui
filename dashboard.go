@@ -54,6 +54,12 @@ func switchTo(name string) tea.Cmd {
 	return func() tea.Msg { return switchModuleMsg{name} }
 }
 
+// reloadConfigMsg signalisiert, dass die persistierte Config geändert wurde
+// (z.B. über die Settings-Seite). Root + Module laden ihre Werte neu.
+type reloadConfigMsg struct{}
+
+func reloadConfig() tea.Msg { return reloadConfigMsg{} }
+
 // launcherEntry ist ein Eintrag im Startmenü. module == nil => "coming soon".
 type launcherEntry struct {
 	icon   string
@@ -111,6 +117,7 @@ func newRoot() *rootModel {
 			{icon: "📻", name: "internet radio", desc: "stream stations worldwide", module: newRadioModule(player)},
 			{icon: "📊", name: "system monitor", desc: "cpu · memory · disk · network", module: newSysmonModule()},
 			{icon: "🌌", name: "ambient", desc: "screensaver + clock + weather", module: newAmbientModule(player)},
+			{icon: "⚙", name: "settings", desc: "theme · header · weather · screensaver", module: newSettingsModule()},
 			{icon: "☀", name: "weather", desc: "coming soon", module: nil},
 		},
 		active:      -1,
@@ -196,6 +203,24 @@ func (r *rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case themeChangedMsg:
 		// an ALLE Module weiterreichen, damit auch inaktive ihre Styles anpassen.
 		var cmds []tea.Cmd
+		for i := range r.entries {
+			if r.entries[i].module != nil {
+				mod, c := r.entries[i].module.Update(msg)
+				r.entries[i].module = mod
+				cmds = append(cmds, c)
+			}
+		}
+		return r, tea.Batch(cmds...)
+
+	case reloadConfigMsg:
+		// Eigene (Root-)Config neu laden ...
+		st := loadState()
+		r.header = st.Header.withDefaults()
+		r.theme = st.Theme
+		r.idleTimeout = st.Ambient.idleTimeout()
+		applyTheme(themeByName(st.Theme))
+		// ... an alle Module weiterreichen + Komponenten neu einfärben.
+		cmds := []tea.Cmd{themeChanged}
 		for i := range r.entries {
 			if r.entries[i].module != nil {
 				mod, c := r.entries[i].module.Update(msg)
