@@ -124,7 +124,8 @@ your last scene + clock settings.
 | Key | Action |
 |-----|--------|
 | `a` | Add a task |
-| `space` | Toggle done |
+| `e` | Edit selected task |
+| `space` / `enter` | Toggle done |
 | `d` | Delete task |
 | `c` | Clear completed |
 | `↑` / `↓` | Navigate |

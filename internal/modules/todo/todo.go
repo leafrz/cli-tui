@@ -17,18 +17,20 @@ type todoModule struct {
 	width, height int
 	items         []config.TodoItem
 	cursor        int
-	adding        bool
-	input         textinput.Model
+
+	inputActive bool // Eingabefeld offen (neu oder bearbeiten)
+	editIdx     int  // -1 = neuer Task, sonst Index des bearbeiteten Tasks
+	input       textinput.Model
 }
 
 func New() *todoModule {
 	in := textinput.New()
 	in.Prompt = "› "
-	in.Placeholder = "new task…"
+	in.Placeholder = "task…"
 	in.CharLimit = 120
 	in.Width = 40
 
-	m := &todoModule{items: config.Load().Todos, input: in}
+	m := &todoModule{items: config.Load().Todos, editIdx: -1, input: in}
 	m.restyle()
 	return m
 }
@@ -64,33 +66,58 @@ func (m *todoModule) save() tea.Cmd {
 	}
 }
 
+// startInput öffnet das Eingabefeld: idx == -1 für neuen Task, sonst bearbeiten.
+func (m *todoModule) startInput(idx int) {
+	m.inputActive = true
+	m.editIdx = idx
+	if idx >= 0 {
+		m.input.SetValue(m.items[idx].Text)
+	} else {
+		m.input.SetValue("")
+	}
+	m.input.CursorEnd()
+	m.input.Focus()
+}
+
+func (m *todoModule) closeInput() {
+	m.inputActive = false
+	m.editIdx = -1
+	m.input.SetValue("")
+	m.input.Blur()
+}
+
 func (m *todoModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 
 	case core.FocusMsg:
-		m.items = config.Load().Todos // könnte extern (Settings-Reset) geändert sein
+		m.items = config.Load().Todos // könnte extern geändert sein
 
 	case core.ThemeChangedMsg:
 		m.restyle()
 
 	case tea.KeyMsg:
-		if m.adding {
+		if m.inputActive {
 			switch msg.String() {
 			case "enter":
-				if t := strings.TrimSpace(m.input.Value()); t != "" {
-					m.items = append(m.items, config.TodoItem{Text: t})
-					m.input.SetValue("")
-					return m, m.save() // bleibt im Add-Modus für schnelles Erfassen
+				val := strings.TrimSpace(m.input.Value())
+				if val == "" {
+					m.closeInput()
+					return m, nil
 				}
-				m.adding = false
-				m.input.Blur()
-				return m, nil
-			case "esc":
-				m.adding = false
+				if m.editIdx >= 0 {
+					m.items[m.editIdx].Text = val
+					m.closeInput()
+					return m, m.save()
+				}
+				// neuer Task -> anhängen, im Add-Modus bleiben für schnelles Erfassen
+				m.items = append(m.items, config.TodoItem{Text: val})
+				m.cursor = len(m.items) - 1
 				m.input.SetValue("")
-				m.input.Blur()
+				return m, m.save()
+			case "esc":
+				m.closeInput()
 				return m, nil
 			}
 			var cmd tea.Cmd
@@ -101,10 +128,14 @@ func (m *todoModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 		switch msg.String() {
 		case "esc", "q":
 			return m, core.GoToLauncher
-		case "a", "i", "n":
-			m.adding = true
-			m.input.Focus()
+		case "a":
+			m.startInput(-1)
 			return m, textinput.Blink
+		case "e":
+			if m.cursor < len(m.items) {
+				m.startInput(m.cursor)
+				return m, textinput.Blink
+			}
 		case "up", "k":
 			if m.cursor > 0 {
 				m.cursor--
@@ -113,7 +144,7 @@ func (m *todoModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 			if m.cursor < len(m.items)-1 {
 				m.cursor++
 			}
-		case " ", "x", "enter":
+		case " ", "enter":
 			if m.cursor < len(m.items) {
 				m.items[m.cursor].Done = !m.items[m.cursor].Done
 				return m, m.save()
@@ -158,7 +189,7 @@ func (m *todoModule) View(width, height int) string {
 	}
 	for i, it := range m.items {
 		cursor := "  "
-		if i == m.cursor && !m.adding {
+		if i == m.cursor && !m.inputActive {
 			cursor = cursorStyle.Render("▸ ")
 		}
 		box, ts := openBox.Render("[ ]"), openText
@@ -167,12 +198,16 @@ func (m *todoModule) View(width, height int) string {
 		}
 		rows = append(rows, cursor+box+" "+ts.Render(it.Text))
 	}
-	if m.adding {
-		rows = append(rows, "", ui.LabelStyle.Render("add: ")+m.input.View())
+	if m.inputActive {
+		label := "add: "
+		if m.editIdx >= 0 {
+			label = "edit: "
+		}
+		rows = append(rows, "", ui.LabelStyle.Render(label)+m.input.View())
 	}
 
 	card := ui.CardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
-	help := ui.HelpStyle.Render("a add · space toggle · d delete · c clear done · esc back")
+	help := ui.HelpStyle.Render("a add · e edit · space/enter toggle · d delete · c clear done · esc back")
 	body := lipgloss.JoinVertical(lipgloss.Center, card, "", help)
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, body)
 }
