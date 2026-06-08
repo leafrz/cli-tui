@@ -9,6 +9,7 @@ import (
 	"github.com/faiface/beep/speaker"
 
 	"github.com/leafrz/dashboard/internal/audio"
+	"github.com/leafrz/dashboard/internal/dashboard"
 )
 
 // version wird beim Release-Build per -ldflags aus dem Git-Tag gesetzt.
@@ -27,7 +28,7 @@ func main() {
 		return
 	}
 
-	p := tea.NewProgram(newRoot(), tea.WithAltScreen())
+	p := tea.NewProgram(dashboard.NewRoot(), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error: %v\n", err)
 		os.Exit(1)

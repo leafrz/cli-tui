@@ -1,4 +1,4 @@
-package main
+package dashboard
 
 import (
 	"fmt"
@@ -74,7 +74,7 @@ type rootModel struct {
 	ambientIdx  int
 }
 
-func newRoot() *rootModel {
+func NewRoot() *rootModel {
 	st := config.Load()
 	ui.ApplyTheme(ui.ThemeByName(st.Theme)) // Palette setzen, bevor irgendwas rendert
 
