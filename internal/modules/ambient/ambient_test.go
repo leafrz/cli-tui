@@ -1,4 +1,4 @@
-package main
+package ambient
 
 import (
 	"strings"
@@ -11,7 +11,7 @@ import (
 // und die Uhr malt (kein Out-of-bounds o.ä.).
 func TestAmbientRender(t *testing.T) {
 	const w, h = 80, 24
-	m := newAmbientModule(audio.NewPlayer())
+	m := New(audio.NewPlayer())
 	m.width, m.height = w, h
 
 	for style := 0; style < len(m.scenes); style++ {

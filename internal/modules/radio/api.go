@@ -1,4 +1,4 @@
-package main
+package radio
 
 import (
 	"encoding/json"

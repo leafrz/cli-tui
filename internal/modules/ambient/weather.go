@@ -1,4 +1,4 @@
-package main
+package ambient
 
 import (
 	"encoding/json"

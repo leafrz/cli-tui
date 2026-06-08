@@ -1,4 +1,4 @@
-package main
+package radio
 
 import (
 	"fmt"
@@ -105,7 +105,7 @@ type radioModule struct {
 	flashUntil time.Time // Ablaufzeitpunkt der Toast-Nachricht
 }
 
-func newRadioModule(p *audio.Player) *radioModule { return &radioModule{radioPlayer: p} }
+func New(p *audio.Player) *radioModule { return &radioModule{radioPlayer: p} }
 
 // Name erfüllt core.Module.
 func (m *radioModule) Name() string { return "radio" }

@@ -1,4 +1,4 @@
-package main
+package settings
 
 import (
 	"strings"
@@ -8,7 +8,7 @@ import (
 // TestSettingsValues prüft, dass jede Einstellung einen Wert rendert und das
 // Umschalten/Zyklen jeder Zeile nicht paniken.
 func TestSettingsValues(t *testing.T) {
-	m := newSettingsModule()
+	m := New()
 	m.width, m.height = 80, 24
 
 	for i := 0; i < settingsCount; i++ {

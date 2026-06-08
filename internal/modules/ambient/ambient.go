@@ -1,4 +1,4 @@
-package main
+package ambient
 
 import (
 	"math/rand"
@@ -116,7 +116,7 @@ type ambientModule struct {
 	editInput textinput.Model
 }
 
-func newAmbientModule(p *audio.Player) *ambientModule {
+func New(p *audio.Player) *ambientModule {
 	ei := textinput.New()
 	ei.Prompt = "› "
 	ei.Placeholder = "city (empty = auto by IP)"

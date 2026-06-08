@@ -1,4 +1,4 @@
-package main
+package radio
 
 import (
 	"github.com/charmbracelet/bubbles/list"

@@ -1,4 +1,4 @@
-package main
+package settings
 
 import (
 	"fmt"
@@ -38,7 +38,7 @@ type settingsModule struct {
 	editInput textinput.Model
 }
 
-func newSettingsModule() *settingsModule {
+func New() *settingsModule {
 	ei := textinput.New()
 	ei.Prompt = "› "
 	ei.CharLimit = 80

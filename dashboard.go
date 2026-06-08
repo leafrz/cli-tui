@@ -12,6 +12,10 @@ import (
 	"github.com/leafrz/dashboard/internal/ui"
 
 	"github.com/leafrz/dashboard/internal/audio"
+	"github.com/leafrz/dashboard/internal/modules/ambient"
+	"github.com/leafrz/dashboard/internal/modules/radio"
+	"github.com/leafrz/dashboard/internal/modules/settings"
+	"github.com/leafrz/dashboard/internal/modules/sysmon"
 )
 
 // headerTickMsg treibt Header-Animationen (rotate/marquee/context) und die Uhr.
@@ -86,10 +90,10 @@ func newRoot() *rootModel {
 
 	r := &rootModel{
 		entries: []launcherEntry{
-			{icon: "📻", name: "internet radio", desc: "stream stations worldwide", module: newRadioModule(player)},
-			{icon: "📊", name: "system monitor", desc: "cpu · memory · disk · network", module: newSysmonModule()},
-			{icon: "🌌", name: "ambient", desc: "screensaver + clock + weather", module: newAmbientModule(player)},
-			{icon: "⚙", name: "settings", desc: "theme · header · weather · screensaver", module: newSettingsModule()},
+			{icon: "📻", name: "internet radio", desc: "stream stations worldwide", module: radio.New(player)},
+			{icon: "📊", name: "system monitor", desc: "cpu · memory · disk · network", module: sysmon.New()},
+			{icon: "🌌", name: "ambient", desc: "screensaver + clock + weather", module: ambient.New(player)},
+			{icon: "⚙", name: "settings", desc: "theme · header · weather · screensaver", module: settings.New()},
 			{icon: "☀", name: "weather", desc: "coming soon", module: nil},
 		},
 		active:      -1,

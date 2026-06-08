@@ -1,4 +1,4 @@
-package main
+package sysmon
 
 import (
 	"fmt"
@@ -86,7 +86,7 @@ type sysmonModule struct {
 	cpuHist, upHist, downHist []float64
 }
 
-func newSysmonModule() *sysmonModule { return &sysmonModule{} }
+func New() *sysmonModule { return &sysmonModule{} }
 
 func (m *sysmonModule) Name() string { return "system" }
 
