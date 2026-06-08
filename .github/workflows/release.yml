@@ -1,6 +1,6 @@
 name: Release
 
-# Tag pushen (z.B. v0.0.1) -> baut Binaries und hängt sie an ein GitHub Release.
+# Tag pushen (z.B. v0.0.1) -> baut das Windows-Binary und hängt es an ein Release.
 on:
   push:
     tags: ["v*"]
@@ -9,19 +9,8 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    name: build ${{ matrix.asset }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            ext: ".exe"
-            asset: lofi-radio-windows-amd64
-          - os: macos-latest
-            ext: ""
-            asset: lofi-radio-macos-arm64
+  release:
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -31,28 +20,11 @@ jobs:
 
       - name: Build
         # Version aus dem Tag in das Binary injizieren.
-        run: go build -ldflags "-s -w -X main.version=${{ github.ref_name }}" -o "${{ matrix.asset }}${{ matrix.ext }}" .
+        run: go build -ldflags "-s -w -X main.version=${{ github.ref_name }}" -o lofi-radio-windows-amd64.exe .
 
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.asset }}
-          path: ${{ matrix.asset }}${{ matrix.ext }}
-
-  # Ein einziger Job legt das Release an -> kein Race zwischen den Build-Jobs.
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist
-          merge-multiple: true
-
-      - name: Create draft release
+      - name: Draft release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          files: lofi-radio-windows-amd64.exe
           draft: true
           generate_release_notes: true
