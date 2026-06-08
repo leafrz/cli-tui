@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/leafrz/dashboard/internal/core"
 
 	"github.com/leafrz/dashboard/internal/audio"
 )
@@ -29,43 +30,12 @@ func idleTick() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg { return idleTickMsg(t) })
 }
 
-// goToLauncherMsg bringt das Dashboard zurück zum Startmenü.
-type goToLauncherMsg struct{}
-
-func goToLauncher() tea.Msg { return goToLauncherMsg{} }
-
-// themeChangedMsg signalisiert allen Modulen, ihre Komponenten-Styles (Liste,
-// Eingabe, Spinner) an die neue Palette anzupassen.
-type themeChangedMsg struct{}
-
-func themeChanged() tea.Msg { return themeChangedMsg{} }
-
-// focusMsg wird an ein Modul gesendet, sobald es geöffnet/aktiv wird. Module
-// nutzen es, um ihre Ticker/Polling (neu) zu starten — diese sterben, während
-// das Modul inaktiv ist (es bekommt dann keine Nachrichten).
-type focusMsg struct{}
-
-func focusModule() tea.Msg { return focusMsg{} }
-
-// switchModuleMsg wechselt direkt zu einem benannten Modul (z.B. Radio -> Ambient).
-type switchModuleMsg struct{ name string }
-
-func switchTo(name string) tea.Cmd {
-	return func() tea.Msg { return switchModuleMsg{name} }
-}
-
-// reloadConfigMsg signalisiert, dass die persistierte Config geändert wurde
-// (z.B. über die Settings-Seite). Root + Module laden ihre Werte neu.
-type reloadConfigMsg struct{}
-
-func reloadConfig() tea.Msg { return reloadConfigMsg{} }
-
 // launcherEntry ist ein Eintrag im Startmenü. module == nil => "coming soon".
 type launcherEntry struct {
 	icon   string
 	name   string
 	desc   string
-	module Module
+	module core.Module
 }
 
 func (e launcherEntry) available() bool { return e.module != nil }
@@ -138,7 +108,7 @@ func newRoot() *rootModel {
 
 func (r *rootModel) inLauncher() bool { return r.active < 0 }
 
-func (r *rootModel) activeModule() Module {
+func (r *rootModel) activeModule() core.Module {
 	if r.inLauncher() {
 		return nil
 	}
@@ -162,7 +132,7 @@ func (r *rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		r.width = msg.Width
 		r.height = msg.Height
-		// an alle echten Module weiterreichen (Listen-Sizing etc.)
+		// an alle echten core.Module weiterreichen (Listen-Sizing etc.)
 		var cmds []tea.Cmd
 		for i := range r.entries {
 			if r.entries[i].module != nil {
@@ -183,25 +153,25 @@ func (r *rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			r.prevActive = r.active
 			r.active = r.ambientIdx
 			r.idleActive = true
-			return r, tea.Batch(focusModule, idleTick())
+			return r, tea.Batch(core.FocusModule, idleTick())
 		}
 		return r, idleTick()
 
-	case goToLauncherMsg:
+	case core.GoToLauncherMsg:
 		r.active = -1
 		return r, nil
 
-	case switchModuleMsg:
+	case core.SwitchModuleMsg:
 		for i := range r.entries {
-			if r.entries[i].name == msg.name && r.entries[i].module != nil {
+			if r.entries[i].name == msg.Name && r.entries[i].module != nil {
 				r.active = i
-				return r, focusModule
+				return r, core.FocusModule
 			}
 		}
 		return r, nil
 
-	case themeChangedMsg:
-		// an ALLE Module weiterreichen, damit auch inaktive ihre Styles anpassen.
+	case core.ThemeChangedMsg:
+		// an ALLE core.Module weiterreichen, damit auch inaktive ihre Styles anpassen.
 		var cmds []tea.Cmd
 		for i := range r.entries {
 			if r.entries[i].module != nil {
@@ -212,15 +182,15 @@ func (r *rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return r, tea.Batch(cmds...)
 
-	case reloadConfigMsg:
+	case core.ReloadConfigMsg:
 		// Eigene (Root-)Config neu laden ...
 		st := loadState()
 		r.header = st.Header.withDefaults()
 		r.theme = st.Theme
 		r.idleTimeout = st.Ambient.idleTimeout()
 		applyTheme(themeByName(st.Theme))
-		// ... an alle Module weiterreichen + Komponenten neu einfärben.
-		cmds := []tea.Cmd{themeChanged}
+		// ... an alle core.Module weiterreichen + Komponenten neu einfärben.
+		cmds := []tea.Cmd{core.ThemeChanged}
 		for i := range r.entries {
 			if r.entries[i].module != nil {
 				mod, c := r.entries[i].module.Update(msg)
@@ -238,7 +208,7 @@ func (r *rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if r.idleActive {
 			r.idleActive = false
 			r.active = r.prevActive
-			return r, focusModule
+			return r, core.FocusModule
 		}
 
 		// 1) Header-Editor hat Vorrang.
@@ -272,7 +242,7 @@ func (r *rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+p":
 			r.theme = nextThemeName(r.theme)
 			applyTheme(themeByName(r.theme))
-			return r, tea.Batch(r.saveThemeCmd(), themeChanged)
+			return r, tea.Batch(r.saveThemeCmd(), core.ThemeChanged)
 		}
 
 		// 3) Launcher-Navigation (kein aktives Modul).
@@ -300,7 +270,7 @@ func (r *rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				if r.entries[r.cursor].available() {
 					r.active = r.cursor
-					return r, focusModule // Modul (neu) anstoßen
+					return r, core.FocusModule // Modul (neu) anstoßen
 				}
 			}
 			return r, nil

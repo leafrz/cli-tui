@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/leafrz/dashboard/internal/core"
 )
 
 var settingsLabels = []string{
@@ -24,7 +25,7 @@ var settingsLabels = []string{
 const settingsCount = 9
 
 // settingsModule ist die zentrale Konfigurationsseite. Änderungen werden sofort
-// persistiert und per reloadConfigMsg an Root + Module verteilt.
+// persistiert und per core.ReloadConfigMsg an Root + core.Module verteilt.
 type settingsModule struct {
 	width, height int
 	cursor        int
@@ -55,18 +56,18 @@ func (m *settingsModule) restyle() {
 	m.editInput.Cursor.Style = lipgloss.NewStyle().Foreground(colPeach)
 }
 
-func (m *settingsModule) Update(msg tea.Msg) (Module, tea.Cmd) {
+func (m *settingsModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 
-	case focusMsg:
+	case core.FocusMsg:
 		m.st = loadState()
 
-	case reloadConfigMsg:
+	case core.ReloadConfigMsg:
 		m.st = loadState()
 
-	case themeChangedMsg:
+	case core.ThemeChangedMsg:
 		m.restyle()
 
 	case tea.KeyMsg:
@@ -87,7 +88,7 @@ func (m *settingsModule) Update(msg tea.Msg) (Module, tea.Cmd) {
 		}
 		switch k {
 		case "esc", "q":
-			return m, goToLauncher
+			return m, core.GoToLauncher
 		case "up", "k":
 			if m.cursor > 0 {
 				m.cursor--
@@ -194,7 +195,7 @@ func (m *settingsModule) save() tea.Cmd {
 			})
 			return nil
 		},
-		reloadConfig,
+		core.ReloadConfig,
 	)
 }
 

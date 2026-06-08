@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/leafrz/dashboard/internal/core"
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/disk"
 	"github.com/shirou/gopsutil/v3/mem"
@@ -62,7 +63,7 @@ func sampleCmd() tea.Cmd {
 	}
 }
 
-// --- Module ----------------------------------------------------------------
+// --- core.Module ----------------------------------------------------------------
 
 type sysmonModule struct {
 	width, height int
@@ -95,14 +96,14 @@ func (m *sysmonModule) Status() string {
 	return fmt.Sprintf("cpu %.0f%% · mem %.0f%%", m.cpu, m.memPct)
 }
 
-func (m *sysmonModule) Init() tea.Cmd { return nil } // Start erst bei focusMsg
+func (m *sysmonModule) Init() tea.Cmd { return nil } // Start erst bei core.FocusMsg
 
-func (m *sysmonModule) Update(msg tea.Msg) (Module, tea.Cmd) {
+func (m *sysmonModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 
-	case focusMsg:
+	case core.FocusMsg:
 		// (Neu) starten: sofort messen + Ticker anwerfen.
 		return m, tea.Batch(sampleCmd(), sysmonTick())
 
@@ -123,7 +124,7 @@ func (m *sysmonModule) Update(msg tea.Msg) (Module, tea.Cmd) {
 		}
 		switch k {
 		case "esc", "q", "backspace":
-			return m, goToLauncher
+			return m, core.GoToLauncher
 		case "?":
 			m.showHelp = true
 			return m, nil

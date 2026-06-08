@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/leafrz/dashboard/internal/core"
 
 	"github.com/leafrz/dashboard/internal/audio"
 )
@@ -104,7 +105,7 @@ type radioModule struct {
 
 func newRadioModule(p *audio.Player) *radioModule { return &radioModule{radioPlayer: p} }
 
-// Name erfüllt Module.
+// Name erfüllt core.Module.
 func (m *radioModule) Name() string { return "radio" }
 
 // Status liefert den Live-Status für den Context-Header.
@@ -312,7 +313,7 @@ func (m *radioModule) fetchMetaCmd() tea.Cmd {
 }
 
 // --- UPDATE ---
-func (m *radioModule) Update(msg tea.Msg) (Module, tea.Cmd) {
+func (m *radioModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
@@ -362,11 +363,11 @@ func (m *radioModule) Update(msg tea.Msg) (Module, tea.Cmd) {
 		}
 		return m, nil
 
-	case themeChangedMsg:
+	case core.ThemeChangedMsg:
 		m.restyle()
 		return m, nil
 
-	case focusMsg:
+	case core.FocusMsg:
 		// Beim (Wieder-)Öffnen die Ticker neu starten — sie sterben, während
 		// das Modul inaktiv ist.
 		var cmds []tea.Cmd
@@ -443,7 +444,7 @@ func (m *radioModule) Update(msg tea.Msg) (Module, tea.Cmd) {
 			switch km.String() {
 			case "esc":
 				// Zurück zum Dashboard-Startmenü.
-				return m, goToLauncher
+				return m, core.GoToLauncher
 			case "enter":
 				m.searching = true
 				return m, tea.Batch(m.searchCmd(m.textInput.Value()), m.spinner.Tick)
@@ -538,7 +539,7 @@ func (m *radioModule) Update(msg tea.Msg) (Module, tea.Cmd) {
 
 			case "a":
 				// In den Ambient-Modus wechseln; Audio läuft weiter.
-				return m, switchTo("ambient")
+				return m, core.SwitchTo("ambient")
 
 			case "t":
 				m.cycleSleep()

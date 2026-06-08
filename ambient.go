@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/leafrz/dashboard/internal/core"
 
 	"github.com/leafrz/dashboard/internal/audio"
 )
@@ -215,12 +216,12 @@ func (m *ambientModule) persistWeatherCmd() tea.Cmd {
 	}
 }
 
-func (m *ambientModule) Update(msg tea.Msg) (Module, tea.Cmd) {
+func (m *ambientModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 
-	case focusMsg:
+	case core.FocusMsg:
 		cmds := []tea.Cmd{}
 		if !m.ticking {
 			m.ticking = true
@@ -258,7 +259,7 @@ func (m *ambientModule) Update(msg tea.Msg) (Module, tea.Cmd) {
 		}
 		return m, nil
 
-	case reloadConfigMsg:
+	case core.ReloadConfigMsg:
 		st := loadState()
 		m.weatherCfg = st.Weather
 		m.cfg = st.Ambient
@@ -309,7 +310,7 @@ func (m *ambientModule) Update(msg tea.Msg) (Module, tea.Cmd) {
 		switch k {
 		case "esc", "q", "backspace":
 			m.ticking = false
-			return m, goToLauncher
+			return m, core.GoToLauncher
 		case "?":
 			m.showHelp = true
 		case " ", "s":
