@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/leafrz/dashboard/internal/config"
 	"github.com/leafrz/dashboard/internal/core"
 	"github.com/leafrz/dashboard/internal/ui"
 
@@ -92,13 +93,13 @@ type radioModule struct {
 	vizFull     bool      // Vollbild-Visualizer
 
 	// QoL
-	connecting  bool      // verbindet gerade -> Spinner statt EQ
-	searching   bool      // Suche läuft -> Spinner
-	showHelp    bool      // Hilfe-Overlay
-	favorites   []station // persistente Favoriten
-	lastStation *station  // zuletzt gespielter Sender (für Resume)
-	sleepUntil  time.Time // Sleep-Timer Ziel (zero = aus)
-	sleepStep   int       // 0=aus, 1=15m, 2=30m, 3=60m
+	connecting  bool             // verbindet gerade -> Spinner statt EQ
+	searching   bool             // Suche läuft -> Spinner
+	showHelp    bool             // Hilfe-Overlay
+	favorites   []config.Station // persistente Favoriten
+	lastStation *config.Station  // zuletzt gespielter Sender (für Resume)
+	sleepUntil  time.Time        // Sleep-Timer Ziel (zero = aus)
+	sleepStep   int              // 0=aus, 1=15m, 2=30m, 3=60m
 
 	flash      string    // transiente Toast-Nachricht (z.B. "★ added")
 	flashUntil time.Time // Ablaufzeitpunkt der Toast-Nachricht
@@ -151,7 +152,7 @@ func (m *radioModule) Init() tea.Cmd {
 	// radioPlayer wird vom Root injiziert (geteilt mit dem Visualizer).
 
 	// Persistenten Zustand laden (Favoriten, letzte Lautstärke, letzter Sender).
-	st := loadState()
+	st := config.Load()
 	m.favorites = st.Favorites
 	m.lastStation = st.LastStation
 	m.radioPlayer.SetVolume(st.LastVolume)
@@ -285,7 +286,7 @@ func (m *radioModule) persistCmd() tea.Cmd {
 	vol := m.uiVolume
 	last := m.lastStation
 	return func() tea.Msg {
-		_ = updateState(func(s *persistedState) {
+		_ = config.Update(func(s *config.State) {
 			s.Favorites = favs
 			s.LastVolume = vol
 			s.LastStation = last
@@ -475,7 +476,7 @@ func (m *radioModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 
 			case "f":
 				if it := m.list.SelectedItem(); it != nil {
-					if s, ok := it.(station); ok && s.StreamURL != "" {
+					if s, ok := it.(config.Station); ok && s.StreamURL != "" {
 						var nowFav bool
 						m.favorites, nowFav = toggleFavorite(m.favorites, s)
 						m.refreshFavMarks()
@@ -490,7 +491,7 @@ func (m *radioModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 
 			case "enter":
 				if it := m.list.SelectedItem(); it != nil {
-					if s, ok := it.(station); ok && s.StreamURL != "" {
+					if s, ok := it.(config.Station); ok && s.StreamURL != "" {
 						m.currentURL = s.StreamURL
 						ls := s
 						ls.Favorite = false
@@ -607,7 +608,7 @@ func (m *radioModule) View(width, height int) string {
 		if m.searching {
 			card = ui.CardStyle.Render(m.spinner.View() + " " + ui.LabelStyle.Render("searching…"))
 		} else {
-			prompt := ui.LabelStyle.Render("find a station or a mood")
+			prompt := ui.LabelStyle.Render("find a config.Station or a mood")
 			input := lipgloss.NewStyle().Width(40).Render(m.textInput.View())
 			card = ui.CardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, prompt, "", input))
 		}
@@ -646,7 +647,7 @@ func (m *radioModule) playerViewRender() string {
 	if m.lastStation != nil {
 		stationName = m.lastStation.Name
 	} else if item := m.list.SelectedItem(); item != nil {
-		stationName = item.(station).Name
+		stationName = item.(config.Station).Name
 	}
 
 	center := lipgloss.NewStyle().Width(cardInner).Align(lipgloss.Center)
@@ -746,14 +747,14 @@ func (m *radioModule) helpView() string {
 		{Title: "search", Rows: [][2]string{
 			{"enter", "search (empty = top DE)"},
 			{"ctrl+f", "show favorites"},
-			{"ctrl+r", "resume last station"},
+			{"ctrl+r", "resume last config.Station"},
 			{"esc", "back to dashboard"},
 		}},
 		{Title: "list", Rows: [][2]string{
 			{"↑/↓", "navigate"},
 			{"/", "filter"},
 			{"f", "toggle favorite"},
-			{"enter", "play station"},
+			{"enter", "play config.Station"},
 			{"esc", "back to search"},
 		}},
 		{Title: "player", Rows: [][2]string{
@@ -763,7 +764,7 @@ func (m *radioModule) helpView() string {
 			{"v", "fullscreen visualizer"},
 			{"a", "ambient mode (keeps playing)"},
 			{"t", "sleep timer (15/30/60)"},
-			{"f", "favorite station"},
+			{"f", "favorite config.Station"},
 			{"esc / q", "back to list"},
 		}},
 	}

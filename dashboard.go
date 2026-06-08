@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/leafrz/dashboard/internal/config"
 	"github.com/leafrz/dashboard/internal/core"
 	"github.com/leafrz/dashboard/internal/ui"
 
@@ -54,7 +55,7 @@ type rootModel struct {
 
 	theme string // aktueller Theme-Name
 
-	header      headerConfig
+	header      config.HeaderConfig
 	headerFrame int
 
 	// In-App Header-Editor
@@ -70,7 +71,7 @@ type rootModel struct {
 }
 
 func newRoot() *rootModel {
-	st := loadState()
+	st := config.Load()
 	ui.ApplyTheme(ui.ThemeByName(st.Theme)) // Palette setzen, bevor irgendwas rendert
 
 	// Ein geteilter Player für Radio + Visualizer.
@@ -93,10 +94,10 @@ func newRoot() *rootModel {
 		},
 		active:      -1,
 		theme:       st.Theme,
-		header:      st.Header.withDefaults(),
+		header:      st.Header.WithDefaults(),
 		editInput:   ei,
 		lastInput:   time.Now(),
-		idleTimeout: st.Ambient.idleTimeout(),
+		idleTimeout: st.Ambient.IdleTimeout(),
 		ambientIdx:  -1,
 	}
 	for i := range r.entries {
@@ -123,7 +124,7 @@ func (r *rootModel) Init() tea.Cmd {
 			cmds = append(cmds, r.entries[i].module.Init())
 		}
 	}
-	cmds = append(cmds, headerTickCmd(r.header.animated()))
+	cmds = append(cmds, headerTickCmd(r.header.Animated()))
 	cmds = append(cmds, idleTick())
 	return tea.Batch(cmds...)
 }
@@ -146,7 +147,7 @@ func (r *rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case headerTickMsg:
 		r.headerFrame++
-		return r, headerTickCmd(r.header.animated())
+		return r, headerTickCmd(r.header.Animated())
 
 	case idleTickMsg:
 		if r.idleTimeout > 0 && r.ambientIdx >= 0 && !r.idleActive && !r.editing &&
@@ -185,10 +186,10 @@ func (r *rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case core.ReloadConfigMsg:
 		// Eigene (Root-)Config neu laden ...
-		st := loadState()
-		r.header = st.Header.withDefaults()
+		st := config.Load()
+		r.header = st.Header.WithDefaults()
 		r.theme = st.Theme
-		r.idleTimeout = st.Ambient.idleTimeout()
+		r.idleTimeout = st.Ambient.IdleTimeout()
 		ui.ApplyTheme(ui.ThemeByName(st.Theme))
 		// ... an alle core.Module weiterreichen + Komponenten neu einfärben.
 		cmds := []tea.Cmd{core.ThemeChanged}
@@ -217,7 +218,7 @@ func (r *rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch key {
 			case "enter":
 				r.header.Text = r.editInput.Value()
-				r.header.Mode = headerStatic
+				r.header.Mode = config.HeaderStatic
 				r.editing = false
 				return r, r.saveHeaderCmd()
 			case "esc":
@@ -232,7 +233,7 @@ func (r *rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// 2) Globale Dashboard-Tasten (überall außer im Editor).
 		switch key {
 		case "ctrl+t":
-			r.header = r.header.next()
+			r.header = r.header.Next()
 			return r, r.saveHeaderCmd()
 		case "ctrl+e":
 			r.editing = true
@@ -415,7 +416,7 @@ func (r *rootModel) headerEditorView() string {
 func (r *rootModel) saveHeaderCmd() tea.Cmd {
 	h := r.header
 	return func() tea.Msg {
-		_ = updateState(func(s *persistedState) { s.Header = h })
+		_ = config.Update(func(s *config.State) { s.Header = h })
 		return nil
 	}
 }
@@ -424,7 +425,7 @@ func (r *rootModel) saveHeaderCmd() tea.Cmd {
 func (r *rootModel) saveThemeCmd() tea.Cmd {
 	name := r.theme
 	return func() tea.Msg {
-		_ = updateState(func(s *persistedState) { s.Theme = name })
+		_ = config.Update(func(s *config.State) { s.Theme = name })
 		return nil
 	}
 }

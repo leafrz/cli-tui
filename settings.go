@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/leafrz/dashboard/internal/config"
 	"github.com/leafrz/dashboard/internal/core"
 	"github.com/leafrz/dashboard/internal/ui"
 )
@@ -30,7 +31,7 @@ const settingsCount = 9
 type settingsModule struct {
 	width, height int
 	cursor        int
-	st            persistedState
+	st            config.State
 
 	editing   bool
 	editIdx   int
@@ -42,7 +43,7 @@ func newSettingsModule() *settingsModule {
 	ei.Prompt = "› "
 	ei.CharLimit = 80
 	ei.Width = 36
-	m := &settingsModule{st: loadState(), editInput: ei}
+	m := &settingsModule{st: config.Load(), editInput: ei}
 	m.restyle()
 	return m
 }
@@ -63,10 +64,10 @@ func (m *settingsModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 
 	case core.FocusMsg:
-		m.st = loadState()
+		m.st = config.Load()
 
 	case core.ReloadConfigMsg:
-		m.st = loadState()
+		m.st = config.Load()
 
 	case core.ThemeChangedMsg:
 		m.restyle()
@@ -140,7 +141,7 @@ func (m *settingsModule) change(dir int) tea.Cmd {
 		m.st.Theme = cycleList(ui.ThemeNames(), m.st.Theme, dir)
 		ui.ApplyTheme(ui.ThemeByName(m.st.Theme))
 	case 1: // header mode
-		m.st.Header.Mode = cycleList(headerModes, m.st.Header.Mode, dir)
+		m.st.Header.Mode = cycleList(config.HeaderModes, m.st.Header.Mode, dir)
 	case 3: // weather mode
 		m.st.Weather.Mode = cycleList([]string{"auto", "manual", "off"}, m.st.Weather.Mode, dir)
 	case 5: // idle on/off
@@ -188,7 +189,7 @@ func (m *settingsModule) save() tea.Cmd {
 	st := m.st
 	return tea.Batch(
 		func() tea.Msg {
-			_ = updateState(func(s *persistedState) {
+			_ = config.Update(func(s *config.State) {
 				s.Theme = st.Theme
 				s.Header = st.Header
 				s.Weather = st.Weather

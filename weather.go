@@ -8,12 +8,13 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/leafrz/dashboard/internal/config"
 )
 
 // weatherMsg trägt die formatierte Wetterzeile (leer = nicht verfügbar/aus).
 type weatherMsg struct{ text string }
 
-func weatherCmd(cfg weatherConfig) tea.Cmd {
+func weatherCmd(cfg config.WeatherConfig) tea.Cmd {
 	return func() tea.Msg {
 		if cfg.Mode == "off" {
 			return weatherMsg{text: ""}
@@ -28,7 +29,7 @@ func weatherCmd(cfg weatherConfig) tea.Cmd {
 
 // fetchWeather ermittelt den Standort gemäß cfg und holt das aktuelle Wetter
 // von Open-Meteo (immer ohne API-Key).
-func fetchWeather(cfg weatherConfig) (string, error) {
+func fetchWeather(cfg config.WeatherConfig) (string, error) {
 	var lat, lon float64
 	var city string
 	var err error

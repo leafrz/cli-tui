@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/leafrz/dashboard/internal/config"
 	"github.com/leafrz/dashboard/internal/core"
 	"github.com/leafrz/dashboard/internal/ui"
 
@@ -102,10 +103,10 @@ type ambientModule struct {
 	rng        *rand.Rand
 	scenes     []scene
 	specLevels []float64 // Mini-Spektrum (wenn Radio läuft)
-	cfg        ambientConfig
+	cfg        config.AmbientConfig
 
 	// weather
-	weatherCfg      weatherConfig
+	weatherCfg      config.WeatherConfig
 	weatherLine     string
 	weatherAt       time.Time
 	weatherFetching bool
@@ -124,7 +125,7 @@ func newAmbientModule(p *audio.Player) *ambientModule {
 	ei.CharLimit = 60
 	ei.Width = 36
 
-	st := loadState()
+	st := config.Load()
 	scenes := buildScenes()
 
 	m := &ambientModule{
@@ -156,7 +157,7 @@ func (m *ambientModule) persistPrefsCmd() tea.Cmd {
 	cfg.Rotate = m.autoRotate
 	m.cfg = cfg
 	return func() tea.Msg {
-		_ = updateState(func(s *persistedState) { s.Ambient = cfg })
+		_ = config.Update(func(s *config.State) { s.Ambient = cfg })
 		return nil
 	}
 }
@@ -212,7 +213,7 @@ func (m *ambientModule) maybeWeather() tea.Cmd {
 func (m *ambientModule) persistWeatherCmd() tea.Cmd {
 	cfg := m.weatherCfg
 	return func() tea.Msg {
-		_ = updateState(func(s *persistedState) { s.Weather = cfg })
+		_ = config.Update(func(s *config.State) { s.Weather = cfg })
 		return nil
 	}
 }
@@ -261,7 +262,7 @@ func (m *ambientModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 		return m, nil
 
 	case core.ReloadConfigMsg:
-		st := loadState()
+		st := config.Load()
 		m.weatherCfg = st.Weather
 		m.cfg = st.Ambient
 		m.showClock = !st.Ambient.HideClock

@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"encoding/json"
@@ -8,21 +8,21 @@ import (
 	"time"
 )
 
-// persistedState ist der auf Platte gespeicherte Zustand.
-type persistedState struct {
-	Favorites   []station     `json:"favorites"`
+// State ist der auf Platte gespeicherte Zustand.
+type State struct {
+	Favorites   []Station     `json:"favorites"`
 	LastVolume  float64       `json:"last_volume"`
-	LastStation *station      `json:"last_station,omitempty"`
-	Header      headerConfig  `json:"header"`
+	LastStation *Station      `json:"last_station,omitempty"`
+	Header      HeaderConfig  `json:"header"`
 	Theme       string        `json:"theme"`
-	Weather     weatherConfig `json:"weather"`
-	Ambient     ambientConfig `json:"ambient"`
+	Weather     WeatherConfig `json:"weather"`
+	Ambient     AmbientConfig `json:"ambient"`
 }
 
-// ambientConfig merkt sich Ambient-Vorlieben. Bools sind so gewählt, dass der
+// AmbientConfig merkt sich Ambient-Vorlieben. Bools sind so gewählt, dass der
 // Zero-Value die sinnvollen Defaults ergibt (Uhr an, 24h, kein Auto-Rotate,
 // Idle-Screensaver an mit 120s).
-type ambientConfig struct {
+type AmbientConfig struct {
 	Scene     string `json:"scene"`
 	HideClock bool   `json:"hide_clock"`
 	Clock12   bool   `json:"clock12"`
@@ -31,8 +31,8 @@ type ambientConfig struct {
 	IdleSecs  int    `json:"idle_secs"` // <=0 -> 120
 }
 
-// idleTimeout liefert die Inaktivitätsdauer bis zum Auto-Screensaver (0 = aus).
-func (c ambientConfig) idleTimeout() time.Duration {
+// IdleTimeout liefert die Inaktivitätsdauer bis zum Auto-Screensaver (0 = aus).
+func (c AmbientConfig) IdleTimeout() time.Duration {
 	if c.IdleOff {
 		return 0
 	}
@@ -43,8 +43,8 @@ func (c ambientConfig) idleTimeout() time.Duration {
 	return time.Duration(s) * time.Second
 }
 
-// weatherConfig steuert die Standortquelle für das Wetter.
-type weatherConfig struct {
+// WeatherConfig steuert die Standortquelle für das Wetter.
+type WeatherConfig struct {
 	Mode string  `json:"mode"` // "auto" (IP), "manual" (City/Lat+Lon), "off"
 	City string  `json:"city"`
 	Lat  float64 `json:"lat"`
@@ -63,14 +63,14 @@ func statePath() (string, error) {
 	return filepath.Join(dir, "lofi-radio", "state.json"), nil
 }
 
-// loadState lädt den persistenten Zustand. Fehlt die Datei, gibt es einen
+// Load lädt den persistenten Zustand. Fehlt die Datei, gibt es einen
 // sinnvollen Default zurück (kein Fehler).
-func loadState() persistedState {
-	def := persistedState{
+func Load() State {
+	def := State{
 		LastVolume: 1.0,
-		Header:     defaultHeaderConfig(),
+		Header:     DefaultHeaderConfig(),
 		Theme:      "lofi", // = themes[0]; hier hartkodiert, damit config nicht von ui abhängt
-		Weather:    weatherConfig{Mode: "auto"},
+		Weather:    WeatherConfig{Mode: "auto"},
 	}
 
 	path, err := statePath()
@@ -81,14 +81,14 @@ func loadState() persistedState {
 	if err != nil {
 		return def // Datei existiert (noch) nicht
 	}
-	var s persistedState
+	var s State
 	if err := json.Unmarshal(data, &s); err != nil {
 		return def // korrupte Datei -> Default
 	}
 	if s.LastVolume <= 0 {
 		s.LastVolume = 1.0
 	}
-	s.Header = s.Header.withDefaults()
+	s.Header = s.Header.WithDefaults()
 	if s.Theme == "" {
 		s.Theme = "lofi"
 	}
@@ -98,15 +98,15 @@ func loadState() persistedState {
 	return s
 }
 
-// saveState schreibt den Zustand atomar (temp + rename).
-func saveState(s persistedState) error {
+// Save schreibt den Zustand atomar (temp + rename).
+func Save(s State) error {
 	storeMu.Lock()
 	defer storeMu.Unlock()
-	return saveStateUnlocked(s)
+	return saveUnlocked(s)
 }
 
-// saveStateUnlocked schreibt ohne Lock (Aufrufer muss storeMu halten).
-func saveStateUnlocked(s persistedState) error {
+// saveUnlocked schreibt ohne Lock (Aufrufer muss storeMu halten).
+func saveUnlocked(s State) error {
 	path, err := statePath()
 	if err != nil {
 		return err
@@ -127,14 +127,14 @@ func saveStateUnlocked(s persistedState) error {
 	return os.Rename(tmp, path)
 }
 
-// updateState lädt den aktuellen Zustand, wendet mut an und speichert wieder.
+// Update lädt den aktuellen Zustand, wendet mut an und speichert wieder.
 // So überschreibt z.B. das Speichern der Favoriten nicht die Header-Config
 // (und umgekehrt). Läuft komplett unter storeMu.
-func updateState(mut func(*persistedState)) error {
+func Update(mut func(*State)) error {
 	storeMu.Lock()
 	defer storeMu.Unlock()
 
-	s := loadState() // liest Datei + füllt Defaults (kein Lock im Innern)
+	s := Load() // liest Datei + füllt Defaults (kein Lock im Innern)
 	mut(&s)
-	return saveStateUnlocked(s)
+	return saveUnlocked(s)
 }
