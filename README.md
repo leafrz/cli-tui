@@ -54,13 +54,13 @@ modules. The architecture is set up so more can drop in.
 ```sh
 git clone https://github.com/leafrz/cli-tui
 cd cli-tui
-go run .
+go run ./cmd/lofi-radio
 ```
 
 Or build a binary:
 
 ```sh
-go build -o lofi-radio .
+go build -o lofi-radio ./cmd/lofi-radio
 ./lofi-radio
 ```
 
@@ -171,31 +171,29 @@ itself never logs to stdout).
 ## Architecture
 
 ```
-main.go          Thin entrypoint: audio init + run the root model
-module.go        Module interface (Name / Init / Update / View / Status)
-dashboard.go     Root model: launcher, global header, routing to modules
-header.go        Header modes + marquee + config
-radiomodule.go   The radio module (search / list / player)
-sysmon.go        The system-monitor module (gopsutil)
-ambient.go       The ambient module (compositor, clock, weather, now-playing)
-scenes.go        The 13 ambient scenes (scene interface)
-settings.go      The settings module (live config, reloadConfigMsg)
-weather.go       IP geolocation + Open-Meteo (no API key)
-radio/meter.go   Audio tap + FFT powering the visualizer
-api.go           Radio Browser API + station type
-store.go         Per-user state persistence (merge-safe writes)
-favorites.go     Favorites helpers
-styles.go        Palette + shared UI components (EQ, volume bar, help)
-themes.go        Theme definitions + live palette switching
-radio/           Audio engine: streaming, decode, ICY metadata, noise gate
+cmd/lofi-radio/      Thin entrypoint: audio init + run the root model
+internal/
+  core/             Module interface + cross-module messages (no deps → no cycle)
+  ui/               Palette, styles, shared components (EQ/bars/help), themes
+  config/           Persisted state, station, header/weather/ambient config
+  audio/            Audio engine: streaming, decode, ICY metadata, FFT meter
+  dashboard/        Root model: launcher, global header, idle screensaver, routing
+  modules/
+    radio/          Radio module (search / list / player / visualizer)
+    sysmon/         System-monitor module (gopsutil)
+    ambient/        Ambient module (scenes, clock, weather, now-playing)
+    settings/       Settings module (live config via reloadConfigMsg)
 ```
 
-A **module** implements the `Module` interface; the root dashboard renders the
-global header and delegates the rest. Adding a new module is roughly:
+Dependency direction: `core` and `ui`/`config` are leaves; `modules` import
+them plus `audio`; `dashboard` imports the modules and routes between them.
+A **module** just implements `core.Module` (Name / Init / Update / View /
+Status). Adding one is roughly:
 
 ```go
-// in newRoot()'s entries:
-{icon: "☀", name: "weather", desc: "current conditions", module: newWeatherModule()},
+// new package under internal/modules/<name> implementing core.Module, then
+// in dashboard's newRoot() entries:
+{icon: "☀", name: "weather", desc: "current conditions", module: weather.New()},
 ```
 
 ## Built with
@@ -204,11 +202,6 @@ global header and delegates the rest. Adding a new module is roughly:
 [Bubbles](https://github.com/charmbracelet/bubbles) ·
 [Lip Gloss](https://github.com/charmbracelet/lipgloss) ·
 [beep](https://github.com/faiface/beep) (audio)
-
-## Known issues
-
-- The radio visualizer can occasionally get "stuck" / stop reacting until you
-  re-enter the player. Audio is unaffected.
 
 ## Roadmap
 

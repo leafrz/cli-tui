@@ -20,7 +20,7 @@ jobs:
 
       - name: Build
         # Version aus dem Tag in das Binary injizieren.
-        run: go build -ldflags "-s -w -X main.version=${{ github.ref_name }}" -o lofi-radio-windows-amd64.exe .
+        run: go build -ldflags "-s -w -X main.version=${{ github.ref_name }}" -o lofi-radio-windows-amd64.exe ./cmd/lofi-radio
 
       - name: Draft release
         uses: softprops/action-gh-release@v2
