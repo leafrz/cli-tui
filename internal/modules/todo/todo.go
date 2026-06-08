@@ -126,7 +126,7 @@ func (m *todoModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 				}
 				return m, m.save()
 			}
-		case "D":
+		case "c":
 			kept := m.items[:0]
 			for _, it := range m.items {
 				if !it.Done {
@@ -172,7 +172,7 @@ func (m *todoModule) View(width, height int) string {
 	}
 
 	card := ui.CardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
-	help := ui.HelpStyle.Render("a add · space toggle · d delete · D clear done · esc back")
+	help := ui.HelpStyle.Render("a add · space toggle · d delete · c clear done · esc back")
 	body := lipgloss.JoinVertical(lipgloss.Center, card, "", help)
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, body)
 }

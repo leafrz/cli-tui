@@ -35,6 +35,7 @@ type Player struct {
 	isPlaying   bool
 	isPaused    bool
 	muted       bool
+	station     string // Anzeigename des aktuellen Senders (für globalen Footer)
 
 	// ended wird gesetzt, wenn der Stream von selbst endet (Drop/EOF), damit
 	// die UI automatisch neu verbinden kann. Atomic, weil es aus der
@@ -169,6 +170,20 @@ func (p *Player) Spectrum(bands int) []float64 {
 		return nil
 	}
 	return m.spectrum(bands)
+}
+
+// SetStationName setzt den Anzeigenamen des aktuellen Senders.
+func (p *Player) SetStationName(s string) {
+	p.mu.Lock()
+	p.station = s
+	p.mu.Unlock()
+}
+
+// StationName liefert den Anzeigenamen des aktuellen Senders.
+func (p *Player) StationName() string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.station
 }
 
 // GetMetadata gibt den zuletzt inline gelesenen Titel zurück (kein Netzwerk).
@@ -395,6 +410,7 @@ func (p *Player) stopInternal() {
 	}
 	p.isPlaying = false
 	p.isPaused = false
+	p.station = ""
 	p.ctrl = nil
 	p.volume = nil
 	// Als "absichtlich gestoppt" markieren -> kein Auto-Reconnect. Play() setzt
