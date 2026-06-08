@@ -413,12 +413,8 @@ func (m *radioModule) Update(msg tea.Msg) (Module, tea.Cmd) {
 			m.state = stateList
 			return m, nil
 		}
-		// Auto-Reconnect bei Stream-Abbruch.
-		if m.uiPlaying && !m.uiPaused && m.state == statePlayer && m.radioPlayer.Ended() {
-			m.connecting = true
-			m.metadata = ""
-			return m, tea.Batch(m.playCmd(), m.spinner.Tick, doTick())
-		}
+		// Auto-Reconnect passiert jetzt im Player selbst (auch wenn dieses Modul
+		// inaktiv ist). Hier nur noch Metadaten-Polling.
 		if m.uiPlaying && m.state == statePlayer {
 			return m, tea.Batch(m.fetchMetaCmd(), doTick())
 		}
@@ -539,6 +535,10 @@ func (m *radioModule) Update(msg tea.Msg) (Module, tea.Cmd) {
 
 			case "v":
 				m.vizFull = !m.vizFull
+
+			case "a":
+				// In den Ambient-Modus wechseln; Audio läuft weiter.
+				return m, switchTo("ambient")
 
 			case "t":
 				m.cycleSleep()
@@ -712,7 +712,7 @@ func (m *radioModule) playerViewRender() string {
 
 	card := cardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
 
-	help := helpStyle.Render("space play/pause · +/− vol · m mute · v viz · t sleep · f fav · ? help · esc back")
+	help := helpStyle.Render("space · +/− vol · m mute · v viz · a ambient · t sleep · f fav · ? help · esc")
 
 	return lipgloss.JoinVertical(lipgloss.Center, card, "", help)
 }
@@ -759,6 +759,7 @@ func (m *radioModule) helpView() string {
 			{"+ / −", "volume"},
 			{"m", "mute"},
 			{"v", "fullscreen visualizer"},
+			{"a", "ambient mode (keeps playing)"},
 			{"t", "sleep timer (15/30/60)"},
 			{"f", "favorite station"},
 			{"esc / q", "back to list"},

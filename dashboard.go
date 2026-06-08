@@ -22,6 +22,13 @@ func headerTickCmd(animated bool) tea.Cmd {
 	return tea.Tick(d, func(t time.Time) tea.Msg { return headerTickMsg(t) })
 }
 
+// idleTickMsg prüft im Sekundentakt auf Inaktivität (Auto-Screensaver).
+type idleTickMsg time.Time
+
+func idleTick() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg { return idleTickMsg(t) })
+}
+
 // goToLauncherMsg bringt das Dashboard zurück zum Startmenü.
 type goToLauncherMsg struct{}
 
@@ -39,6 +46,19 @@ func themeChanged() tea.Msg { return themeChangedMsg{} }
 type focusMsg struct{}
 
 func focusModule() tea.Msg { return focusMsg{} }
+
+// switchModuleMsg wechselt direkt zu einem benannten Modul (z.B. Radio -> Ambient).
+type switchModuleMsg struct{ name string }
+
+func switchTo(name string) tea.Cmd {
+	return func() tea.Msg { return switchModuleMsg{name} }
+}
+
+// reloadConfigMsg signalisiert, dass die persistierte Config geändert wurde
+// (z.B. über die Settings-Seite). Root + Module laden ihre Werte neu.
+type reloadConfigMsg struct{}
+
+func reloadConfig() tea.Msg { return reloadConfigMsg{} }
 
 // launcherEntry ist ein Eintrag im Startmenü. module == nil => "coming soon".
 type launcherEntry struct {
@@ -69,6 +89,13 @@ type rootModel struct {
 	// In-App Header-Editor
 	editing   bool
 	editInput textinput.Model
+
+	// Auto-Screensaver (Idle)
+	lastInput   time.Time
+	idleActive  bool
+	prevActive  int
+	idleTimeout time.Duration
+	ambientIdx  int
 }
 
 func newRoot() *rootModel {
@@ -85,17 +112,28 @@ func newRoot() *rootModel {
 	ei.CharLimit = 80
 	ei.Width = 40
 
-	return &rootModel{
+	r := &rootModel{
 		entries: []launcherEntry{
 			{icon: "📻", name: "internet radio", desc: "stream stations worldwide", module: newRadioModule(player)},
 			{icon: "📊", name: "system monitor", desc: "cpu · memory · disk · network", module: newSysmonModule()},
+			{icon: "🌌", name: "ambient", desc: "screensaver + clock + weather", module: newAmbientModule(player)},
+			{icon: "⚙", name: "settings", desc: "theme · header · weather · screensaver", module: newSettingsModule()},
 			{icon: "☀", name: "weather", desc: "coming soon", module: nil},
 		},
-		active:    -1,
-		theme:     st.Theme,
-		header:    st.Header.withDefaults(),
-		editInput: ei,
+		active:      -1,
+		theme:       st.Theme,
+		header:      st.Header.withDefaults(),
+		editInput:   ei,
+		lastInput:   time.Now(),
+		idleTimeout: st.Ambient.idleTimeout(),
+		ambientIdx:  -1,
 	}
+	for i := range r.entries {
+		if r.entries[i].name == "ambient" {
+			r.ambientIdx = i
+		}
+	}
+	return r
 }
 
 func (r *rootModel) inLauncher() bool { return r.active < 0 }
@@ -115,6 +153,7 @@ func (r *rootModel) Init() tea.Cmd {
 		}
 	}
 	cmds = append(cmds, headerTickCmd(r.header.animated()))
+	cmds = append(cmds, idleTick())
 	return tea.Batch(cmds...)
 }
 
@@ -138,8 +177,27 @@ func (r *rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		r.headerFrame++
 		return r, headerTickCmd(r.header.animated())
 
+	case idleTickMsg:
+		if r.idleTimeout > 0 && r.ambientIdx >= 0 && !r.idleActive && !r.editing &&
+			r.active != r.ambientIdx && time.Since(r.lastInput) > r.idleTimeout {
+			r.prevActive = r.active
+			r.active = r.ambientIdx
+			r.idleActive = true
+			return r, tea.Batch(focusModule, idleTick())
+		}
+		return r, idleTick()
+
 	case goToLauncherMsg:
 		r.active = -1
+		return r, nil
+
+	case switchModuleMsg:
+		for i := range r.entries {
+			if r.entries[i].name == msg.name && r.entries[i].module != nil {
+				r.active = i
+				return r, focusModule
+			}
+		}
 		return r, nil
 
 	case themeChangedMsg:
@@ -154,8 +212,34 @@ func (r *rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return r, tea.Batch(cmds...)
 
+	case reloadConfigMsg:
+		// Eigene (Root-)Config neu laden ...
+		st := loadState()
+		r.header = st.Header.withDefaults()
+		r.theme = st.Theme
+		r.idleTimeout = st.Ambient.idleTimeout()
+		applyTheme(themeByName(st.Theme))
+		// ... an alle Module weiterreichen + Komponenten neu einfärben.
+		cmds := []tea.Cmd{themeChanged}
+		for i := range r.entries {
+			if r.entries[i].module != nil {
+				mod, c := r.entries[i].module.Update(msg)
+				r.entries[i].module = mod
+				cmds = append(cmds, c)
+			}
+		}
+		return r, tea.Batch(cmds...)
+
 	case tea.KeyMsg:
 		key := msg.String()
+		r.lastInput = time.Now()
+
+		// Auto-Screensaver aktiv? Erste Taste weckt nur auf (keine Aktion).
+		if r.idleActive {
+			r.idleActive = false
+			r.active = r.prevActive
+			return r, focusModule
+		}
 
 		// 1) Header-Editor hat Vorrang.
 		if r.editing {

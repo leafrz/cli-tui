@@ -56,6 +56,15 @@ var themes = []themeDef{
 	},
 }
 
+// themeNames liefert alle Theme-Namen in Reihenfolge.
+func themeNames() []string {
+	out := make([]string, len(themes))
+	for i, t := range themes {
+		out[i] = t.name
+	}
+	return out
+}
+
 // themeByName liefert das Theme oder das erste (lofi) als Fallback.
 func themeByName(name string) themeDef {
 	for _, t := range themes {
