@@ -8,7 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/leafrz/dashboard/radio"
+	"github.com/leafrz/dashboard/internal/audio"
 )
 
 // headerTickMsg treibt Header-Animationen (rotate/marquee/context) und die Uhr.
@@ -103,7 +103,7 @@ func newRoot() *rootModel {
 	applyTheme(themeByName(st.Theme)) // Palette setzen, bevor irgendwas rendert
 
 	// Ein geteilter Player für Radio + Visualizer.
-	player := radio.NewPlayer()
+	player := audio.NewPlayer()
 
 	ei := textinput.New()
 	ei.Prompt = "› "

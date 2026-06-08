@@ -4,14 +4,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/leafrz/dashboard/radio"
+	"github.com/leafrz/dashboard/internal/audio"
 )
 
 // TestAmbientRender prüft, dass JEDE Szene einen Frame korrekter Höhe liefert
 // und die Uhr malt (kein Out-of-bounds o.ä.).
 func TestAmbientRender(t *testing.T) {
 	const w, h = 80, 24
-	m := newAmbientModule(radio.NewPlayer())
+	m := newAmbientModule(audio.NewPlayer())
 	m.width, m.height = w, h
 
 	for style := 0; style < len(m.scenes); style++ {

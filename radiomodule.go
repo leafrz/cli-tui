@@ -11,7 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/leafrz/dashboard/radio"
+	"github.com/leafrz/dashboard/internal/audio"
 )
 
 // UI States
@@ -63,7 +63,7 @@ func doTick() tea.Cmd {
 
 // --- RADIO MODULE ---
 type radioModule struct {
-	radioPlayer *radio.Player
+	radioPlayer *audio.Player
 
 	// UI Komponenten
 	list      list.Model
@@ -102,7 +102,7 @@ type radioModule struct {
 	flashUntil time.Time // Ablaufzeitpunkt der Toast-Nachricht
 }
 
-func newRadioModule(p *radio.Player) *radioModule { return &radioModule{radioPlayer: p} }
+func newRadioModule(p *audio.Player) *radioModule { return &radioModule{radioPlayer: p} }
 
 // Name erfüllt Module.
 func (m *radioModule) Name() string { return "radio" }

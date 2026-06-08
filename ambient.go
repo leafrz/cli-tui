@@ -9,7 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/leafrz/dashboard/radio"
+	"github.com/leafrz/dashboard/internal/audio"
 )
 
 // --- cell grid (für Overlay von Uhr/Infos über Animation) ------------------
@@ -86,7 +86,7 @@ func ambientTick() tea.Cmd {
 // --- module ----------------------------------------------------------------
 
 type ambientModule struct {
-	player        *radio.Player
+	player        *audio.Player
 	width, height int
 	frame         int
 	style         int
@@ -113,7 +113,7 @@ type ambientModule struct {
 	editInput textinput.Model
 }
 
-func newAmbientModule(p *radio.Player) *ambientModule {
+func newAmbientModule(p *audio.Player) *ambientModule {
 	ei := textinput.New()
 	ei.Prompt = "› "
 	ei.Placeholder = "city (empty = auto by IP)"

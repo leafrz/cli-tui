@@ -1,5 +1,5 @@
 // radio/player.go
-package radio
+package audio
 
 import (
 	"bufio"

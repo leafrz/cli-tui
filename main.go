@@ -8,7 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/faiface/beep/speaker"
 
-	"github.com/leafrz/dashboard/radio"
+	"github.com/leafrz/dashboard/internal/audio"
 )
 
 // version wird beim Release-Build per -ldflags aus dem Git-Tag gesetzt.
@@ -22,7 +22,7 @@ func main() {
 
 	// Speaker EINMALIG mit fester Rate initialisieren und offen halten.
 	// Streams mit abweichender Rate werden im Player resampled.
-	if err := speaker.Init(radio.SampleRate, radio.SampleRate.N(time.Second/10)); err != nil {
+	if err := speaker.Init(audio.SampleRate, audio.SampleRate.N(time.Second/10)); err != nil {
 		fmt.Printf("FATALER FEHLER: Audio-Gerät konnte nicht initialisiert werden: %v\n", err)
 		return
 	}
