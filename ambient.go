@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/leafrz/dashboard/internal/core"
+	"github.com/leafrz/dashboard/internal/ui"
 
 	"github.com/leafrz/dashboard/internal/audio"
 )
@@ -118,8 +119,8 @@ func newAmbientModule(p *audio.Player) *ambientModule {
 	ei := textinput.New()
 	ei.Prompt = "› "
 	ei.Placeholder = "city (empty = auto by IP)"
-	ei.PromptStyle = lipgloss.NewStyle().Foreground(colTeal)
-	ei.TextStyle = lipgloss.NewStyle().Foreground(colCream)
+	ei.PromptStyle = lipgloss.NewStyle().Foreground(ui.ColTeal)
+	ei.TextStyle = lipgloss.NewStyle().Foreground(ui.ColCream)
 	ei.CharLimit = 60
 	ei.Width = 36
 
@@ -370,16 +371,16 @@ func (m *ambientModule) View(width, height int) string {
 	}
 	hint := "space: scene · r: rotate · c: clock · w: location · ?: help · esc   (" +
 		scene + ")"
-	g.stampText(centerX(width, hint), height-1, hint, colDim)
+	g.stampText(centerX(width, hint), height-1, hint, ui.ColDim)
 
 	return g.render()
 }
 
 func (m *ambientModule) locationEditorView() string {
-	prompt := labelStyle.Render("weather location")
+	prompt := ui.LabelStyle.Render("weather location")
 	input := lipgloss.NewStyle().Width(38).Render(m.editInput.View())
-	hint := helpStyle.Render("enter: save   ·   empty = auto by IP   ·   esc: cancel")
-	card := cardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, prompt, "", input))
+	hint := ui.HelpStyle.Render("enter: save   ·   empty = auto by IP   ·   esc: cancel")
+	card := ui.CardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, prompt, "", input))
 	return lipgloss.JoinVertical(lipgloss.Center, card, "", hint)
 }
 
@@ -455,7 +456,7 @@ func (m *ambientModule) drawClock(g *grid) {
 				}
 				for dy := 0; dy < sy; dy++ {
 					for dx := 0; dx < sx; dx++ {
-						g.set(ox+(baseX+c)*sx+dx, oy+r*sy+dy, '█', colPeach)
+						g.set(ox+(baseX+c)*sx+dx, oy+r*sy+dy, '█', ui.ColPeach)
 					}
 				}
 			}
@@ -471,13 +472,13 @@ func (m *ambientModule) drawClock(g *grid) {
 	if !m.clock24 {
 		dateFmt = "Mon 02 Jan · 03:04:05 PM"
 	}
-	lines := []infoLine{{now.Format(dateFmt), colDim}}
+	lines := []infoLine{{now.Format(dateFmt), ui.ColDim}}
 	if m.weatherLine != "" {
-		lines = append(lines, infoLine{m.weatherLine, colTeal})
+		lines = append(lines, infoLine{m.weatherLine, ui.ColTeal})
 	}
 	np := m.nowPlaying()
 	if np != "" {
-		lines = append(lines, infoLine{np, colMauve})
+		lines = append(lines, infoLine{np, ui.ColMauve})
 	}
 	for i, ln := range lines {
 		g.stampText(centerX(m.width, ln.s), oy+totalH+1+i, ln.s, ln.c)
@@ -498,16 +499,16 @@ func (g *grid) stampBars(levels []float64, cx, topY, height int) {
 		x := startX + b*2
 		for r := 0; r < height; r++ {
 			cellFromBottom := height - r
-			if ch := barRune(lv, cellFromBottom, height); ch != ' ' {
-				g.set(x, topY+r, ch, eqRowColor(cellFromBottom, height))
+			if ch := ui.BarRune(lv, cellFromBottom, height); ch != ' ' {
+				g.set(x, topY+r, ch, ui.EqRowColor(cellFromBottom, height))
 			}
 		}
 	}
 }
 
 func (m *ambientModule) helpView() string {
-	sections := []helpSection{
-		{title: "ambient", rows: [][2]string{
+	sections := []ui.HelpSection{
+		{Title: "ambient", Rows: [][2]string{
 			{"space / s", "next scene"},
 			{"S", "previous scene"},
 			{"r", "auto-rotate scenes"},
@@ -518,6 +519,6 @@ func (m *ambientModule) helpView() string {
 			{"?", "toggle this help"},
 		}},
 	}
-	return helpOverlay("ambient · help", sections,
+	return ui.HelpOverlay("ambient · help", sections,
 		"auto-screensaver after ~2 min idle · any key wakes")
 }

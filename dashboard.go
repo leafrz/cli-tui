@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/leafrz/dashboard/internal/core"
+	"github.com/leafrz/dashboard/internal/ui"
 
 	"github.com/leafrz/dashboard/internal/audio"
 )
@@ -70,15 +71,15 @@ type rootModel struct {
 
 func newRoot() *rootModel {
 	st := loadState()
-	applyTheme(themeByName(st.Theme)) // Palette setzen, bevor irgendwas rendert
+	ui.ApplyTheme(ui.ThemeByName(st.Theme)) // Palette setzen, bevor irgendwas rendert
 
 	// Ein geteilter Player für Radio + Visualizer.
 	player := audio.NewPlayer()
 
 	ei := textinput.New()
 	ei.Prompt = "› "
-	ei.PromptStyle = lipgloss.NewStyle().Foreground(colTeal)
-	ei.TextStyle = lipgloss.NewStyle().Foreground(colCream)
+	ei.PromptStyle = lipgloss.NewStyle().Foreground(ui.ColTeal)
+	ei.TextStyle = lipgloss.NewStyle().Foreground(ui.ColCream)
 	ei.CharLimit = 80
 	ei.Width = 40
 
@@ -188,7 +189,7 @@ func (r *rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		r.header = st.Header.withDefaults()
 		r.theme = st.Theme
 		r.idleTimeout = st.Ambient.idleTimeout()
-		applyTheme(themeByName(st.Theme))
+		ui.ApplyTheme(ui.ThemeByName(st.Theme))
 		// ... an alle core.Module weiterreichen + Komponenten neu einfärben.
 		cmds := []tea.Cmd{core.ThemeChanged}
 		for i := range r.entries {
@@ -240,8 +241,8 @@ func (r *rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			r.editInput.Focus()
 			return r, textinput.Blink
 		case "ctrl+p":
-			r.theme = nextThemeName(r.theme)
-			applyTheme(themeByName(r.theme))
+			r.theme = ui.NextThemeName(r.theme)
+			ui.ApplyTheme(ui.ThemeByName(r.theme))
 			return r, tea.Batch(r.saveThemeCmd(), core.ThemeChanged)
 		}
 
@@ -314,26 +315,26 @@ func (r *rootModel) View() string {
 
 // launcherView rendert das Startmenü.
 func (r *rootModel) launcherView(contentH int) string {
-	title := labelStyle.Render("what do you wanna do?")
+	title := ui.LabelStyle.Render("what do you wanna do?")
 
 	rows := []string{title, ""}
 	for i, e := range r.entries {
 		cursor := "  "
-		nameStyle := lipgloss.NewStyle().Foreground(colCream)
+		nameStyle := lipgloss.NewStyle().Foreground(ui.ColCream)
 		if !e.available() {
-			nameStyle = lipgloss.NewStyle().Foreground(colDim)
+			nameStyle = lipgloss.NewStyle().Foreground(ui.ColDim)
 		}
 		if i == r.cursor {
-			cursor = lipgloss.NewStyle().Foreground(colPeach).Render("▸ ")
-			nameStyle = nameStyle.Bold(true).Foreground(colPeach)
+			cursor = lipgloss.NewStyle().Foreground(ui.ColPeach).Render("▸ ")
+			nameStyle = nameStyle.Bold(true).Foreground(ui.ColPeach)
 		}
 		name := nameStyle.Render(fmt.Sprintf("%s  %-16s", e.icon, e.name))
-		desc := dimStyle.Render(e.desc)
+		desc := ui.DimStyle.Render(e.desc)
 		rows = append(rows, cursor+name+"  "+desc)
 	}
 
-	card := cardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
-	help := helpStyle.Render(fmt.Sprintf(
+	card := ui.CardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+	help := ui.HelpStyle.Render(fmt.Sprintf(
 		"↑/↓: select   ·   enter: open   ·   ctrl+p: theme (%s)   ·   ?: help   ·   ctrl+c: quit",
 		r.theme))
 	menu := lipgloss.JoinVertical(lipgloss.Center, card, "", help)
@@ -343,23 +344,23 @@ func (r *rootModel) launcherView(contentH int) string {
 
 // globalHelpView rendert die GLOBALE Hilfe (dashboard-weite Befehle).
 func globalHelpView(theme string) string {
-	sections := []helpSection{
-		{title: "navigation", rows: [][2]string{
+	sections := []ui.HelpSection{
+		{Title: "navigation", Rows: [][2]string{
 			{"↑/↓", "select module"},
 			{"enter", "open module"},
 			{"esc", "back to dashboard (from a module)"},
 		}},
-		{title: "appearance", rows: [][2]string{
+		{Title: "appearance", Rows: [][2]string{
 			{"ctrl+t", "cycle header mode"},
 			{"ctrl+e", "edit header text"},
 			{"ctrl+p", "cycle theme (now: " + theme + ")"},
 		}},
-		{title: "app", rows: [][2]string{
+		{Title: "app", Rows: [][2]string{
 			{"?", "toggle this help"},
 			{"ctrl+c", "quit"},
 		}},
 	}
-	return helpOverlay("dashboard · help", sections, "? or esc to close")
+	return ui.HelpOverlay("dashboard · help", sections, "? or esc to close")
 }
 
 // headerView rendert den globalen Header (Titel/Animation links, Uhr rechts).
@@ -368,11 +369,11 @@ func (r *rootModel) headerView() string {
 	if mod := r.activeModule(); mod != nil {
 		status = mod.Status()
 	}
-	left := headerTextStyle.Render(
+	left := ui.HeaderTextStyle.Render(
 		headerText(r.header, r.headerFrame, r.headerWidthForText(), status),
 	)
 
-	clock := clockStyle.Render(time.Now().Format("15:04"))
+	clock := ui.ClockStyle.Render(time.Now().Format("15:04"))
 
 	spacerW := r.width - lipgloss.Width(left) - lipgloss.Width(clock) - 2
 	if spacerW < 1 {
@@ -384,7 +385,7 @@ func (r *rootModel) headerView() string {
 		clock,
 	)
 
-	rule := horizontalRule(r.width - 2)
+	rule := ui.HorizontalRule(r.width - 2)
 	return lipgloss.NewStyle().Padding(0, 1).Render(
 		lipgloss.JoinVertical(lipgloss.Left, bar, rule),
 	)
@@ -403,10 +404,10 @@ func (r *rootModel) headerWidthForText() int {
 }
 
 func (r *rootModel) headerEditorView() string {
-	prompt := labelStyle.Render("set header text")
+	prompt := ui.LabelStyle.Render("set header text")
 	input := lipgloss.NewStyle().Width(40).Render(r.editInput.View())
-	help := helpStyle.Render("enter: save (mode → static)   ·   esc: cancel")
-	card := cardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, prompt, "", input))
+	help := ui.HelpStyle.Render("enter: save (mode → static)   ·   esc: cancel")
+	card := ui.CardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, prompt, "", input))
 	return lipgloss.JoinVertical(lipgloss.Center, card, "", help)
 }
 

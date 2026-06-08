@@ -1,10 +1,6 @@
 package main
 
-import (
-	"strings"
-
-	"github.com/charmbracelet/lipgloss"
-)
+import "strings"
 
 // Header-Modi
 const (
@@ -122,8 +118,3 @@ func headerText(h headerConfig, frame, width int, status string) string {
 		return h.Text
 	}
 }
-
-// headerTitleStyle/headerTagStyle werden im Root verwendet.
-var (
-	headerTextStyle = lipgloss.NewStyle().Bold(true).Foreground(colMauve)
-)

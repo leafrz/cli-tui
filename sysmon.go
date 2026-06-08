@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/leafrz/dashboard/internal/core"
+	"github.com/leafrz/dashboard/internal/ui"
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/disk"
 	"github.com/shirou/gopsutil/v3/mem"
@@ -164,64 +165,64 @@ func (m *sysmonModule) View(width, height int) string {
 	}
 	if !m.havePrev {
 		return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center,
-			dimStyle.Render("gathering system stats…"))
+			ui.DimStyle.Render("gathering system stats…"))
 	}
 
 	const inner = 46
-	label := lipgloss.NewStyle().Foreground(colPurple)
-	val := lipgloss.NewStyle().Foreground(colCream)
+	label := lipgloss.NewStyle().Foreground(ui.ColPurple)
+	val := lipgloss.NewStyle().Foreground(ui.ColCream)
 
 	// CPU
 	cpuRows := []string{
 		rowLabelValue("cpu", fmt.Sprintf("%.0f%%", m.cpu), inner, label, val),
-		renderVolumeBar(m.cpu/100, inner),
-		renderSparkline(m.cpuHist, inner, colTeal),
+		ui.RenderVolumeBar(m.cpu/100, inner),
+		renderSparkline(m.cpuHist, inner, ui.ColTeal),
 	}
 	if len(m.perCPU) > 0 {
 		cpuRows = append(cpuRows, label.Render("cores ")+renderCores(m.perCPU))
 	}
-	cpuCard := cardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, cpuRows...))
+	cpuCard := ui.CardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, cpuRows...))
 
 	// Memory
-	memCard := cardStyle.Render(lipgloss.JoinVertical(lipgloss.Left,
+	memCard := ui.CardStyle.Render(lipgloss.JoinVertical(lipgloss.Left,
 		rowLabelValue("memory",
 			fmt.Sprintf("%s / %s  %.0f%%", humanBytes(m.memUsed), humanBytes(m.memTotal), m.memPct),
 			inner, label, val),
-		renderVolumeBar(m.memPct/100, inner),
+		ui.RenderVolumeBar(m.memPct/100, inner),
 	))
 
 	// Disk
-	diskCard := cardStyle.Render(lipgloss.JoinVertical(lipgloss.Left,
+	diskCard := ui.CardStyle.Render(lipgloss.JoinVertical(lipgloss.Left,
 		rowLabelValue("disk "+rootPath(),
 			fmt.Sprintf("%s / %s  %.0f%%", humanBytes(m.diskUsed), humanBytes(m.diskTotal), m.diskPct),
 			inner, label, val),
-		renderVolumeBar(m.diskPct/100, inner),
+		ui.RenderVolumeBar(m.diskPct/100, inner),
 	))
 
 	// Network
-	netCard := cardStyle.Render(lipgloss.JoinVertical(lipgloss.Left,
+	netCard := ui.CardStyle.Render(lipgloss.JoinVertical(lipgloss.Left,
 		rowLabelValue("network",
 			fmt.Sprintf("↓ %s   ↑ %s", humanRate(m.netDown), humanRate(m.netUp)),
 			inner, label, val),
-		label.Render("↓ ")+renderSparkline(m.downHist, inner-2, colTeal),
-		label.Render("↑ ")+renderSparkline(m.upHist, inner-2, colPeach),
+		label.Render("↓ ")+renderSparkline(m.downHist, inner-2, ui.ColTeal),
+		label.Render("↑ ")+renderSparkline(m.upHist, inner-2, ui.ColPeach),
 	))
 
 	stack := lipgloss.JoinVertical(lipgloss.Left, cpuCard, memCard, diskCard, netCard)
-	help := helpStyle.Render("esc: dashboard   ·   ?: help")
+	help := ui.HelpStyle.Render("esc: dashboard   ·   ?: help")
 	body := lipgloss.JoinVertical(lipgloss.Center, stack, "", help)
 
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, body)
 }
 
 func (m *sysmonModule) helpView() string {
-	sections := []helpSection{
-		{title: "system monitor", rows: [][2]string{
+	sections := []ui.HelpSection{
+		{Title: "system monitor", Rows: [][2]string{
 			{"esc / q", "back to dashboard"},
 			{"?", "toggle this help"},
 		}},
 	}
-	return helpOverlay("system · help", sections, "? or esc to close   ·   global commands on the dashboard")
+	return ui.HelpOverlay("system · help", sections, "? or esc to close   ·   global commands on the dashboard")
 }
 
 // --- helpers ---------------------------------------------------------------
@@ -278,12 +279,12 @@ func renderCores(per []float64) string {
 		if idx > len(sparkRunes)-1 {
 			idx = len(sparkRunes) - 1
 		}
-		c := colTeal
+		c := ui.ColTeal
 		switch {
 		case p >= 85:
-			c = colError
+			c = ui.ColError
 		case p >= 50:
-			c = colPeach
+			c = ui.ColPeach
 		}
 		b.WriteString(lipgloss.NewStyle().Foreground(c).Render(string(sparkRunes[idx])))
 	}

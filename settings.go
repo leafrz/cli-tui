@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/leafrz/dashboard/internal/core"
+	"github.com/leafrz/dashboard/internal/ui"
 )
 
 var settingsLabels = []string{
@@ -51,9 +52,9 @@ func (m *settingsModule) Status() string { return "" }
 func (m *settingsModule) Init() tea.Cmd  { return nil }
 
 func (m *settingsModule) restyle() {
-	m.editInput.PromptStyle = lipgloss.NewStyle().Foreground(colTeal)
-	m.editInput.TextStyle = lipgloss.NewStyle().Foreground(colCream)
-	m.editInput.Cursor.Style = lipgloss.NewStyle().Foreground(colPeach)
+	m.editInput.PromptStyle = lipgloss.NewStyle().Foreground(ui.ColTeal)
+	m.editInput.TextStyle = lipgloss.NewStyle().Foreground(ui.ColCream)
+	m.editInput.Cursor.Style = lipgloss.NewStyle().Foreground(ui.ColPeach)
 }
 
 func (m *settingsModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
@@ -136,8 +137,8 @@ func (m *settingsModule) openEditor() {
 func (m *settingsModule) change(dir int) tea.Cmd {
 	switch m.cursor {
 	case 0: // theme
-		m.st.Theme = cycleList(themeNames(), m.st.Theme, dir)
-		applyTheme(themeByName(m.st.Theme))
+		m.st.Theme = cycleList(ui.ThemeNames(), m.st.Theme, dir)
+		ui.ApplyTheme(ui.ThemeByName(m.st.Theme))
 	case 1: // header mode
 		m.st.Header.Mode = cycleList(headerModes, m.st.Header.Mode, dir)
 	case 3: // weather mode
@@ -250,29 +251,29 @@ func (m *settingsModule) View(width, height int) string {
 	m.width, m.height = width, height
 
 	if m.editing {
-		title := labelStyle.Render("edit " + settingsLabels[m.editIdx])
+		title := ui.LabelStyle.Render("edit " + settingsLabels[m.editIdx])
 		input := lipgloss.NewStyle().Width(38).Render(m.editInput.View())
-		hint := helpStyle.Render("enter: save   ·   esc: cancel")
-		card := cardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, title, "", input))
+		hint := ui.HelpStyle.Render("enter: save   ·   esc: cancel")
+		card := ui.CardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, title, "", input))
 		return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center,
 			lipgloss.JoinVertical(lipgloss.Center, card, "", hint))
 	}
 
-	valStyle := lipgloss.NewStyle().Foreground(colTeal)
-	rows := []string{labelStyle.Render("settings"), ""}
+	valStyle := lipgloss.NewStyle().Foreground(ui.ColTeal)
+	rows := []string{ui.LabelStyle.Render("settings"), ""}
 	for i := 0; i < settingsCount; i++ {
 		cursor := "  "
-		ls := lipgloss.NewStyle().Foreground(colCream)
+		ls := lipgloss.NewStyle().Foreground(ui.ColCream)
 		if i == m.cursor {
-			cursor = lipgloss.NewStyle().Foreground(colPeach).Render("▸ ")
-			ls = lipgloss.NewStyle().Foreground(colPeach).Bold(true)
+			cursor = lipgloss.NewStyle().Foreground(ui.ColPeach).Render("▸ ")
+			ls = lipgloss.NewStyle().Foreground(ui.ColPeach).Bold(true)
 		}
 		label := ls.Width(20).Render(settingsLabels[i])
 		rows = append(rows, cursor+label+valStyle.Render(m.value(i)))
 	}
 
-	card := cardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
-	help := helpStyle.Render("↑/↓ select   ·   ←/→ change   ·   enter edit   ·   esc back")
+	card := ui.CardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+	help := ui.HelpStyle.Render("↑/↓ select   ·   ←/→ change   ·   enter edit   ·   esc back")
 	body := lipgloss.JoinVertical(lipgloss.Center, card, "", help)
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, body)
 }

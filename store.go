@@ -69,7 +69,7 @@ func loadState() persistedState {
 	def := persistedState{
 		LastVolume: 1.0,
 		Header:     defaultHeaderConfig(),
-		Theme:      themes[0].name,
+		Theme:      "lofi", // = themes[0]; hier hartkodiert, damit config nicht von ui abhängt
 		Weather:    weatherConfig{Mode: "auto"},
 	}
 
@@ -90,7 +90,7 @@ func loadState() persistedState {
 	}
 	s.Header = s.Header.withDefaults()
 	if s.Theme == "" {
-		s.Theme = themes[0].name
+		s.Theme = "lofi"
 	}
 	if s.Weather.Mode == "" {
 		s.Weather.Mode = "auto"

@@ -1,4 +1,4 @@
-package main
+package ui
 
 import (
 	"fmt"
@@ -9,24 +9,24 @@ import (
 
 // --- Help rendering --------------------------------------------------------
 
-// helpSection ist eine betitelte Gruppe von Tastenkürzeln.
-type helpSection struct {
-	title string
-	rows  [][2]string // {key, beschreibung}
+// HelpSection ist eine betitelte Gruppe von Tastenkürzeln.
+type HelpSection struct {
+	Title string
+	Rows  [][2]string // {key, beschreibung}
 }
 
-// helpOverlay rendert ein einheitlich formatiertes, zentriertes Hilfe-Panel.
+// HelpOverlay rendert ein einheitlich formatiertes, zentriertes Hilfe-Panel.
 // Die Key-Spalte wird über alle Zeilen hinweg bündig ausgerichtet.
-func helpOverlay(title string, sections []helpSection, footer string) string {
-	keyStyle := lipgloss.NewStyle().Foreground(colPeach)
-	descStyle := lipgloss.NewStyle().Foreground(colCream)
-	headStyle := lipgloss.NewStyle().Foreground(colMauve).Bold(true)
-	titleStyle := lipgloss.NewStyle().Foreground(colPeach).Bold(true)
+func HelpOverlay(title string, sections []HelpSection, footer string) string {
+	keyStyle := lipgloss.NewStyle().Foreground(ColPeach)
+	descStyle := lipgloss.NewStyle().Foreground(ColCream)
+	headStyle := lipgloss.NewStyle().Foreground(ColMauve).Bold(true)
+	titleStyle := lipgloss.NewStyle().Foreground(ColPeach).Bold(true)
 
 	// Breite der Key-Spalte über alle Zeilen bestimmen.
 	maxK := 0
 	for _, s := range sections {
-		for _, r := range s.rows {
+		for _, r := range s.Rows {
 			if w := lipgloss.Width(r[0]); w > maxK {
 				maxK = w
 			}
@@ -38,15 +38,15 @@ func helpOverlay(title string, sections []helpSection, footer string) string {
 		if i > 0 {
 			lines = append(lines, "")
 		}
-		lines = append(lines, headStyle.Render(s.title))
-		for _, r := range s.rows {
+		lines = append(lines, headStyle.Render(s.Title))
+		for _, r := range s.Rows {
 			key := keyStyle.Render(fmt.Sprintf("%-*s", maxK, r[0]))
 			lines = append(lines, "  "+key+"   "+descStyle.Render(r[1]))
 		}
 	}
 
-	card := cardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
-	hint := helpStyle.Render(footer)
+	card := CardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
+	hint := HelpStyle.Render(footer)
 	return lipgloss.JoinVertical(lipgloss.Center, card, "", hint)
 }
 
@@ -54,37 +54,40 @@ func helpOverlay(title string, sections []helpSection, footer string) string {
 // Warm, dusty, low-key. Nothing saturated; everything sits slightly faded,
 // like a worn cassette label.
 var (
-	colCream  = lipgloss.Color("#e6ddcf") // primary text
-	colMauve  = lipgloss.Color("#c4a7b5") // accent / titles
-	colPurple = lipgloss.Color("#9a8c98") // borders / secondary accent
-	colTeal   = lipgloss.Color("#88a09e") // status / cool accent
-	colPeach  = lipgloss.Color("#dcae9a") // highlight / warm accent
-	colDim    = lipgloss.Color("#7a736b") // muted text / help
-	colFaint  = lipgloss.Color("#48433d") // empty track fill
-	colError  = lipgloss.Color("#c98a8a") // muted red
-	colGood   = lipgloss.Color("#a3b18a") // muted green
+	ColCream  = lipgloss.Color("#e6ddcf") // primary text
+	ColMauve  = lipgloss.Color("#c4a7b5") // accent / titles
+	ColPurple = lipgloss.Color("#9a8c98") // borders / secondary accent
+	ColTeal   = lipgloss.Color("#88a09e") // status / cool accent
+	ColPeach  = lipgloss.Color("#dcae9a") // highlight / warm accent
+	ColDim    = lipgloss.Color("#7a736b") // muted text / help
+	ColFaint  = lipgloss.Color("#48433d") // empty track fill
+	ColError  = lipgloss.Color("#c98a8a") // muted red
+	ColGood   = lipgloss.Color("#a3b18a") // muted green
 )
 
 // --- Shared styles ---------------------------------------------------------
 var (
-	clockStyle = lipgloss.NewStyle().Foreground(colDim)
-	helpStyle  = lipgloss.NewStyle().Foreground(colDim)
-	dimStyle   = lipgloss.NewStyle().Foreground(colDim)
-	labelStyle = lipgloss.NewStyle().Foreground(colPurple)
+	ClockStyle = lipgloss.NewStyle().Foreground(ColDim)
+	HelpStyle  = lipgloss.NewStyle().Foreground(ColDim)
+	DimStyle   = lipgloss.NewStyle().Foreground(ColDim)
+	LabelStyle = lipgloss.NewStyle().Foreground(ColPurple)
 
-	cardStyle = lipgloss.NewStyle().
+	CardStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(colPurple).
+			BorderForeground(ColPurple).
 			Padding(1, 4)
 
-	stationNameStyle = lipgloss.NewStyle().Bold(true).Foreground(colPeach)
-	nowPlayingStyle  = lipgloss.NewStyle().Foreground(colCream).Italic(true)
+	StationNameStyle = lipgloss.NewStyle().Bold(true).Foreground(ColPeach)
+	NowPlayingStyle  = lipgloss.NewStyle().Foreground(ColCream).Italic(true)
 
-	ruleStyle = lipgloss.NewStyle().Foreground(colFaint)
+	// HeaderTextStyle wird vom Dashboard-Header genutzt; in rebuildStyles gesetzt.
+	HeaderTextStyle = lipgloss.NewStyle().Bold(true).Foreground(ColMauve)
+
+	ruleStyle = lipgloss.NewStyle().Foreground(ColFaint)
 )
 
-// horizontalRule renders a faint full-width separator line.
-func horizontalRule(width int) string {
+// HorizontalRule renders a faint full-width separator line.
+func HorizontalRule(width int) string {
 	if width < 1 {
 		width = 1
 	}
@@ -93,7 +96,7 @@ func horizontalRule(width int) string {
 
 // --- Volume bar ------------------------------------------------------------
 // A smooth gradient bar using fine block characters.
-func renderVolumeBar(vol float64, width int) string {
+func RenderVolumeBar(vol float64, width int) string {
 	if width < 1 {
 		width = 1
 	}
@@ -117,15 +120,15 @@ func renderVolumeBar(vol float64, width int) string {
 			var c lipgloss.Color
 			switch {
 			case ratio < 0.4:
-				c = colTeal
+				c = ColTeal
 			case ratio < 0.75:
-				c = colMauve
+				c = ColMauve
 			default:
-				c = colPeach
+				c = ColPeach
 			}
 			b.WriteString(lipgloss.NewStyle().Foreground(c).Render("█"))
 		} else {
-			b.WriteString(lipgloss.NewStyle().Foreground(colFaint).Render("░"))
+			b.WriteString(lipgloss.NewStyle().Foreground(ColFaint).Render("░"))
 		}
 	}
 	return b.String()
@@ -137,21 +140,21 @@ func renderVolumeBar(vol float64, width int) string {
 // shows a flat low baseline.
 var eqRunes = []rune(" ▁▂▃▄▅▆▇█")
 
-func eqRowColor(cellFromBottom, height int) lipgloss.Color {
+func EqRowColor(cellFromBottom, height int) lipgloss.Color {
 	ratio := float64(cellFromBottom) / float64(height)
 	switch {
 	case ratio < 0.4:
-		return colTeal
+		return ColTeal
 	case ratio < 0.75:
-		return colMauve
+		return ColMauve
 	default:
-		return colPeach
+		return ColPeach
 	}
 }
 
-// barRune liefert das passende Block-Zeichen für einen Balken der Höhe level
+// BarRune liefert das passende Block-Zeichen für einen Balken der Höhe level
 // (0..1) in der gegebenen Zelle (von unten gezählt).
-func barRune(level float64, cellFromBottom, height int) rune {
+func BarRune(level float64, cellFromBottom, height int) rune {
 	barH := level * float64(height)
 	lower := float64(cellFromBottom - 1)
 	if barH >= float64(cellFromBottom) {
@@ -170,13 +173,13 @@ func barRune(level float64, cellFromBottom, height int) rune {
 	return ' '
 }
 
-// renderBars zeichnet kompakte Balken (ein Band = 1 Spalte + Lücke) über height
+// RenderBars zeichnet kompakte Balken (ein Band = 1 Spalte + Lücke) über height
 // Zeilen, eingefärbt nach Höhe. Für echte Spektrum-Pegel (0..1).
 //
 // WICHTIG: jede Zeile behält die volle Breite (kein TrimRight). Sonst wären die
 // Zeilen unterschiedlich breit und würden beim Zentrieren versetzt ausgerichtet
 // -> verrutschte Balken.
-func renderBars(levels []float64, height int) string {
+func RenderBars(levels []float64, height int) string {
 	if height < 1 {
 		height = 1
 	}
@@ -186,13 +189,13 @@ func renderBars(levels []float64, height int) string {
 	rows := make([]string, height)
 	for r := 0; r < height; r++ {
 		cellFromBottom := height - r
-		style := lipgloss.NewStyle().Foreground(eqRowColor(cellFromBottom, height))
+		style := lipgloss.NewStyle().Foreground(EqRowColor(cellFromBottom, height))
 		var line strings.Builder
 		for i, lv := range levels {
 			if i > 0 {
 				line.WriteByte(' ') // Lücke zwischen Balken
 			}
-			if ch := barRune(lv, cellFromBottom, height); ch == ' ' {
+			if ch := BarRune(lv, cellFromBottom, height); ch == ' ' {
 				line.WriteByte(' ')
 			} else {
 				line.WriteString(style.Render(string(ch)))
@@ -203,22 +206,22 @@ func renderBars(levels []float64, height int) string {
 	return strings.Join(rows, "\n")
 }
 
-// renderSpectrum zeichnet ein bildschirmfüllendes Spektrum (ein Band = 2 Spalten).
-func renderSpectrum(levels []float64, width, height int) string {
+// RenderSpectrum zeichnet ein bildschirmfüllendes Spektrum (ein Band = 2 Spalten).
+func RenderSpectrum(levels []float64, width, height int) string {
 	if len(levels) == 0 || width < 1 || height < 1 {
 		return ""
 	}
 	out := make([]string, height)
 	for r := 0; r < height; r++ {
 		cellFromBottom := height - r
-		style := lipgloss.NewStyle().Foreground(eqRowColor(cellFromBottom, height))
+		style := lipgloss.NewStyle().Foreground(EqRowColor(cellFromBottom, height))
 		var line strings.Builder
 		col := 0
 		for _, lv := range levels {
 			if col >= width {
 				break
 			}
-			if ch := barRune(lv, cellFromBottom, height); ch == ' ' {
+			if ch := BarRune(lv, cellFromBottom, height); ch == ' ' {
 				line.WriteString("  ")
 			} else {
 				line.WriteString(style.Render(string(ch)) + " ")

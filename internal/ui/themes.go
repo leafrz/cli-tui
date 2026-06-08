@@ -1,4 +1,4 @@
-package main
+package ui
 
 import "github.com/charmbracelet/lipgloss"
 
@@ -56,8 +56,8 @@ var themes = []themeDef{
 	},
 }
 
-// themeNames liefert alle Theme-Namen in Reihenfolge.
-func themeNames() []string {
+// ThemeNames liefert alle Theme-Namen in Reihenfolge.
+func ThemeNames() []string {
 	out := make([]string, len(themes))
 	for i, t := range themes {
 		out[i] = t.name
@@ -65,8 +65,8 @@ func themeNames() []string {
 	return out
 }
 
-// themeByName liefert das Theme oder das erste (lofi) als Fallback.
-func themeByName(name string) themeDef {
+// ThemeByName liefert das Theme oder das erste (lofi) als Fallback.
+func ThemeByName(name string) themeDef {
 	for _, t := range themes {
 		if t.name == name {
 			return t
@@ -75,8 +75,8 @@ func themeByName(name string) themeDef {
 	return themes[0]
 }
 
-// nextThemeName liefert den Namen des nächsten Themes (zyklisch).
-func nextThemeName(name string) string {
+// NextThemeName liefert den Namen des nächsten Themes (zyklisch).
+func NextThemeName(name string) string {
 	cur := 0
 	for i, t := range themes {
 		if t.name == name {
@@ -87,17 +87,17 @@ func nextThemeName(name string) string {
 	return themes[(cur+1)%len(themes)].name
 }
 
-// applyTheme setzt die globale Palette und baut die Styles neu auf.
-func applyTheme(t themeDef) {
-	colCream = t.cream
-	colMauve = t.mauve
-	colPurple = t.purple
-	colTeal = t.teal
-	colPeach = t.peach
-	colDim = t.dim
-	colFaint = t.faint
-	colError = t.errorC
-	colGood = t.good
+// ApplyTheme setzt die globale Palette und baut die Styles neu auf.
+func ApplyTheme(t themeDef) {
+	ColCream = t.cream
+	ColMauve = t.mauve
+	ColPurple = t.purple
+	ColTeal = t.teal
+	ColPeach = t.peach
+	ColDim = t.dim
+	ColFaint = t.faint
+	ColError = t.errorC
+	ColGood = t.good
 	rebuildStyles()
 }
 
@@ -105,19 +105,19 @@ func applyTheme(t themeDef) {
 // Muss nach jeder Theme-Änderung laufen, da Styles ihre Farben beim Bauen
 // einfrieren. View-Code liest diese Vars zur Render-Zeit -> Neuzuweisung wirkt.
 func rebuildStyles() {
-	clockStyle = lipgloss.NewStyle().Foreground(colDim)
-	helpStyle = lipgloss.NewStyle().Foreground(colDim)
-	dimStyle = lipgloss.NewStyle().Foreground(colDim)
-	labelStyle = lipgloss.NewStyle().Foreground(colPurple)
+	ClockStyle = lipgloss.NewStyle().Foreground(ColDim)
+	HelpStyle = lipgloss.NewStyle().Foreground(ColDim)
+	DimStyle = lipgloss.NewStyle().Foreground(ColDim)
+	LabelStyle = lipgloss.NewStyle().Foreground(ColPurple)
 
-	cardStyle = lipgloss.NewStyle().
+	CardStyle = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colPurple).
+		BorderForeground(ColPurple).
 		Padding(1, 4)
 
-	stationNameStyle = lipgloss.NewStyle().Bold(true).Foreground(colPeach)
-	nowPlayingStyle = lipgloss.NewStyle().Foreground(colCream).Italic(true)
-	ruleStyle = lipgloss.NewStyle().Foreground(colFaint)
+	StationNameStyle = lipgloss.NewStyle().Bold(true).Foreground(ColPeach)
+	NowPlayingStyle = lipgloss.NewStyle().Foreground(ColCream).Italic(true)
+	ruleStyle = lipgloss.NewStyle().Foreground(ColFaint)
 
-	headerTextStyle = lipgloss.NewStyle().Bold(true).Foreground(colMauve)
+	HeaderTextStyle = lipgloss.NewStyle().Bold(true).Foreground(ColMauve)
 }

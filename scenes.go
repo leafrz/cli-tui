@@ -5,6 +5,7 @@ import (
 	"math/rand"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/leafrz/dashboard/internal/ui"
 )
 
 // scene ist eine austauschbare Hintergrund-Animation für das Ambient-Modul.
@@ -52,19 +53,19 @@ func rampChar(t float64) rune {
 func gradColor(t float64) lipgloss.Color {
 	switch {
 	case t < 0.25:
-		return colFaint
+		return ui.ColFaint
 	case t < 0.45:
-		return colTeal
+		return ui.ColTeal
 	case t < 0.7:
-		return colMauve
+		return ui.ColMauve
 	case t < 0.9:
-		return colPeach
+		return ui.ColPeach
 	default:
-		return colCream
+		return ui.ColCream
 	}
 }
 
-var themeCycle = []lipgloss.Color{colTeal, colMauve, colPeach, colGood, colCream}
+var themeCycle = []lipgloss.Color{ui.ColTeal, ui.ColMauve, ui.ColPeach, ui.ColGood, ui.ColCream}
 
 // --- starfield -------------------------------------------------------------
 
@@ -109,11 +110,11 @@ func (s *starfieldScene) draw(g *grid, rng *rand.Rand) {
 		sy := int(st.y/st.z*cy + cy)
 		switch {
 		case st.z < 0.35:
-			g.set(sx, sy, '@', colCream)
+			g.set(sx, sy, '@', ui.ColCream)
 		case st.z < 0.7:
-			g.set(sx, sy, '*', colMauve)
+			g.set(sx, sy, '*', ui.ColMauve)
 		default:
-			g.set(sx, sy, '.', colDim)
+			g.set(sx, sy, '.', ui.ColDim)
 		}
 	}
 }
@@ -164,13 +165,13 @@ func (s *matrixScene) draw(g *grid, rng *rand.Rand) {
 			r := matrixRunes[rng.Intn(len(matrixRunes))]
 			switch {
 			case t == 0:
-				g.set(x, y, r, colCream)
+				g.set(x, y, r, ui.ColCream)
 			case t < 3:
-				g.set(x, y, r, colGood)
+				g.set(x, y, r, ui.ColGood)
 			case t < 6:
-				g.set(x, y, r, colTeal)
+				g.set(x, y, r, ui.ColTeal)
 			default:
-				g.set(x, y, r, colFaint)
+				g.set(x, y, r, ui.ColFaint)
 			}
 		}
 	}
@@ -218,8 +219,8 @@ func (s *rainScene) draw(g *grid, rng *rand.Rand) {
 	s.ensure(g.w, g.h, rng)
 	for _, d := range s.drops {
 		x, y := int(d.x), int(d.y)
-		g.set(x, y, '/', colTeal)
-		g.set(x-1, y-1, '/', colFaint)
+		g.set(x, y, '/', ui.ColTeal)
+		g.set(x-1, y-1, '/', ui.ColFaint)
 	}
 }
 
@@ -265,9 +266,9 @@ func (s *snowScene) draw(g *grid, rng *rand.Rand) {
 	s.ensure(g.w, g.h, rng)
 	for _, f := range s.flakes {
 		ch := '·'
-		col := colDim
+		col := ui.ColDim
 		if f.spd > 0.35 {
-			ch, col = '*', colCream
+			ch, col = '*', ui.ColCream
 		}
 		g.set(int(f.x), int(f.y), ch, col)
 	}
@@ -366,7 +367,7 @@ func (s *lifeScene) draw(g *grid, rng *rand.Rand) {
 	for y := 0; y < g.h; y++ {
 		for x := 0; x < g.w; x++ {
 			if s.cells[y*g.w+x] {
-				g.set(x, y, '●', colGood)
+				g.set(x, y, '●', ui.ColGood)
 			}
 		}
 	}
@@ -424,7 +425,7 @@ func (s *fireworksScene) draw(g *grid, rng *rand.Rand) {
 		}
 		col := p.col
 		if p.life < 0.35 {
-			col = colFaint
+			col = ui.ColFaint
 		}
 		g.set(int(p.x), int(p.y), ch, col)
 	}
@@ -482,7 +483,7 @@ func (s *wavesScene) name() string                     { return "waves" }
 func (s *wavesScene) advance(w, h int, rng *rand.Rand) { s.t += 0.15 }
 
 func (s *wavesScene) draw(g *grid, rng *rand.Rand) {
-	cols := []lipgloss.Color{colTeal, colMauve, colPeach}
+	cols := []lipgloss.Color{ui.ColTeal, ui.ColMauve, ui.ColPeach}
 	mid := float64(g.h) / 2
 	amp := float64(g.h) / 4
 	for k := 0; k < 3; k++ {
@@ -544,13 +545,13 @@ func (s *fireScene) draw(g *grid, rng *rand.Rand) {
 			var col lipgloss.Color
 			switch {
 			case t < 0.3:
-				col = colFaint
+				col = ui.ColFaint
 			case t < 0.55:
-				col = colError
+				col = ui.ColError
 			case t < 0.8:
-				col = colPeach
+				col = ui.ColPeach
 			default:
-				col = colCream
+				col = ui.ColCream
 			}
 			g.set(x, y, rampChar(t), col)
 		}

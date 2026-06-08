@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/leafrz/dashboard/internal/core"
+	"github.com/leafrz/dashboard/internal/ui"
 
 	"github.com/leafrz/dashboard/internal/audio"
 )
@@ -193,28 +194,28 @@ func (m *radioModule) Init() tea.Cmd {
 // restyle wendet die aktuelle Palette auf die Bubbles-Komponenten an
 // (Spinner, Eingabe, Liste). Wird bei Init und bei Theme-Wechsel aufgerufen.
 func (m *radioModule) restyle() {
-	m.spinner.Style = lipgloss.NewStyle().Foreground(colTeal)
+	m.spinner.Style = lipgloss.NewStyle().Foreground(ui.ColTeal)
 
-	m.textInput.PromptStyle = lipgloss.NewStyle().Foreground(colTeal)
-	m.textInput.TextStyle = lipgloss.NewStyle().Foreground(colCream)
-	m.textInput.PlaceholderStyle = lipgloss.NewStyle().Foreground(colFaint)
-	m.textInput.Cursor.Style = lipgloss.NewStyle().Foreground(colPeach)
+	m.textInput.PromptStyle = lipgloss.NewStyle().Foreground(ui.ColTeal)
+	m.textInput.TextStyle = lipgloss.NewStyle().Foreground(ui.ColCream)
+	m.textInput.PlaceholderStyle = lipgloss.NewStyle().Foreground(ui.ColFaint)
+	m.textInput.Cursor.Style = lipgloss.NewStyle().Foreground(ui.ColPeach)
 
 	delegate := list.NewDefaultDelegate()
 	delegate.Styles.SelectedTitle = delegate.Styles.SelectedTitle.
-		Foreground(colPeach).BorderForeground(colMauve)
+		Foreground(ui.ColPeach).BorderForeground(ui.ColMauve)
 	delegate.Styles.SelectedDesc = delegate.Styles.SelectedDesc.
-		Foreground(colMauve).BorderForeground(colMauve)
-	delegate.Styles.NormalTitle = delegate.Styles.NormalTitle.Foreground(colCream)
-	delegate.Styles.NormalDesc = delegate.Styles.NormalDesc.Foreground(colDim)
-	delegate.Styles.DimmedTitle = delegate.Styles.DimmedTitle.Foreground(colDim)
-	delegate.Styles.DimmedDesc = delegate.Styles.DimmedDesc.Foreground(colFaint)
+		Foreground(ui.ColMauve).BorderForeground(ui.ColMauve)
+	delegate.Styles.NormalTitle = delegate.Styles.NormalTitle.Foreground(ui.ColCream)
+	delegate.Styles.NormalDesc = delegate.Styles.NormalDesc.Foreground(ui.ColDim)
+	delegate.Styles.DimmedTitle = delegate.Styles.DimmedTitle.Foreground(ui.ColDim)
+	delegate.Styles.DimmedDesc = delegate.Styles.DimmedDesc.Foreground(ui.ColFaint)
 	m.list.SetDelegate(delegate)
 
 	m.list.Styles.Title = lipgloss.NewStyle().
-		Padding(0, 1).Background(colPurple).Foreground(colCream).Bold(true)
-	m.list.Styles.FilterPrompt = lipgloss.NewStyle().Foreground(colTeal)
-	m.list.Styles.FilterCursor = lipgloss.NewStyle().Foreground(colPeach)
+		Padding(0, 1).Background(ui.ColPurple).Foreground(ui.ColCream).Bold(true)
+	m.list.Styles.FilterPrompt = lipgloss.NewStyle().Foreground(ui.ColTeal)
+	m.list.Styles.FilterCursor = lipgloss.NewStyle().Foreground(ui.ColPeach)
 }
 
 func (m *radioModule) updateUIState() {
@@ -604,17 +605,17 @@ func (m *radioModule) View(width, height int) string {
 	} else if m.state == stateSearch {
 		var card string
 		if m.searching {
-			card = cardStyle.Render(m.spinner.View() + " " + labelStyle.Render("searching…"))
+			card = ui.CardStyle.Render(m.spinner.View() + " " + ui.LabelStyle.Render("searching…"))
 		} else {
-			prompt := labelStyle.Render("find a station or a mood")
+			prompt := ui.LabelStyle.Render("find a station or a mood")
 			input := lipgloss.NewStyle().Width(40).Render(m.textInput.View())
-			card = cardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, prompt, "", input))
+			card = ui.CardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, prompt, "", input))
 		}
 
-		help := helpStyle.Render("enter: search   ·   ctrl+f: favorites   ·   esc: dashboard")
+		help := ui.HelpStyle.Render("enter: search   ·   ctrl+f: favorites   ·   esc: dashboard")
 		parts := []string{card, "", help}
 		if m.lastStation != nil {
-			resume := dimStyle.Render("ctrl+r: resume ") + labelStyle.Render(m.lastStation.Name)
+			resume := ui.DimStyle.Render("ctrl+r: resume ") + ui.LabelStyle.Render(m.lastStation.Name)
 			parts = append(parts, resume)
 		}
 		searchContent := lipgloss.JoinVertical(lipgloss.Center, parts...)
@@ -654,49 +655,49 @@ func (m *radioModule) playerViewRender() string {
 	var status string
 	switch {
 	case m.err != nil:
-		status = lipgloss.NewStyle().Foreground(colError).Render("✕ " + m.err.Error())
+		status = lipgloss.NewStyle().Foreground(ui.ColError).Render("✕ " + m.err.Error())
 	case m.connecting:
-		status = lipgloss.NewStyle().Foreground(colTeal).Render(m.spinner.View() + " connecting…")
+		status = lipgloss.NewStyle().Foreground(ui.ColTeal).Render(m.spinner.View() + " connecting…")
 	case m.uiPaused:
-		status = lipgloss.NewStyle().Foreground(colPeach).Render("❚❚ paused")
+		status = lipgloss.NewStyle().Foreground(ui.ColPeach).Render("❚❚ paused")
 	default:
-		status = lipgloss.NewStyle().Foreground(colTeal).Render("▶ streaming")
+		status = lipgloss.NewStyle().Foreground(ui.ColTeal).Render("▶ streaming")
 	}
 
 	// Mitte: Spinner beim Verbinden, sonst Equalizer.
 	var midBlock string
 	if m.connecting {
-		midBlock = center.Render(lipgloss.NewStyle().Foreground(colMauve).Render(
+		midBlock = center.Render(lipgloss.NewStyle().Foreground(ui.ColMauve).Render(
 			m.spinner.View() + " " + m.spinner.View() + " " + m.spinner.View()))
 		midBlock = lipgloss.NewStyle().Height(5).Render(midBlock)
 	} else {
 		// Echtes Spektrum (geglättet) aus dem laufenden Audio.
-		midBlock = center.Render(renderBars(m.cardLevels, 5))
+		midBlock = center.Render(ui.RenderBars(m.cardLevels, 5))
 	}
 
 	// Now Playing
-	nowPlaying := dimStyle.Render("— stille —")
+	nowPlaying := ui.DimStyle.Render("— stille —")
 	if m.metadata != "" {
-		nowPlaying = labelStyle.Render("♫ ") + nowPlayingStyle.Render(m.metadata)
+		nowPlaying = ui.LabelStyle.Render("♫ ") + ui.NowPlayingStyle.Render(m.metadata)
 	}
 	nowPlaying = center.Render(nowPlaying)
 
 	// Volume (oder MUTED)
 	var volLine string
 	if m.uiMuted {
-		volLine = center.Render(lipgloss.NewStyle().Foreground(colPeach).Render("🔇 muted"))
+		volLine = center.Render(lipgloss.NewStyle().Foreground(ui.ColPeach).Render("🔇 muted"))
 	} else {
-		bar := renderVolumeBar(m.uiVolume, 24)
+		bar := ui.RenderVolumeBar(m.uiVolume, 24)
 		volLine = center.Render(lipgloss.JoinHorizontal(lipgloss.Left,
-			labelStyle.Render("vol "),
+			ui.LabelStyle.Render("vol "),
 			bar,
-			dimStyle.Render(fmt.Sprintf(" %3.0f%%", m.uiVolume*100)),
+			ui.DimStyle.Render(fmt.Sprintf(" %3.0f%%", m.uiVolume*100)),
 		))
 	}
 
-	titleText := stationNameStyle.Render(stationName)
+	titleText := ui.StationNameStyle.Render(stationName)
 	if isFavorite(m.favorites, m.currentURL) {
-		titleText = lipgloss.NewStyle().Foreground(colPeach).Render("★ ") + titleText
+		titleText = lipgloss.NewStyle().Foreground(ui.ColPeach).Render("★ ") + titleText
 	}
 	title := center.Render(titleText)
 	statusLine := center.Render(status)
@@ -707,13 +708,13 @@ func (m *radioModule) playerViewRender() string {
 	if !m.sleepUntil.IsZero() {
 		rem := time.Until(m.sleepUntil).Round(time.Minute)
 		rows = append(rows, "", center.Render(
-			lipgloss.NewStyle().Foreground(colPurple).Render(
+			lipgloss.NewStyle().Foreground(ui.ColPurple).Render(
 				fmt.Sprintf("☾ sleep in %dm", int(rem.Minutes())))))
 	}
 
-	card := cardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+	card := ui.CardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
 
-	help := helpStyle.Render("space · +/− vol · m mute · v viz · a ambient · t sleep · f fav · ? help · esc")
+	help := ui.HelpStyle.Render("space · +/− vol · m mute · v viz · a ambient · t sleep · f fav · ? help · esc")
 
 	return lipgloss.JoinVertical(lipgloss.Center, card, "", help)
 }
@@ -725,13 +726,13 @@ func (m *radioModule) fullVizView(width, height int) string {
 	if rows < 3 {
 		rows = 3
 	}
-	spectrum := renderSpectrum(m.fullLevels, width, rows)
+	spectrum := ui.RenderSpectrum(m.fullLevels, width, rows)
 
 	track := ""
 	if m.metadata != "" {
-		track = nowPlayingStyle.Render("♫ " + m.metadata)
+		track = ui.NowPlayingStyle.Render("♫ " + m.metadata)
 	}
-	help := helpStyle.Render("v: exit fullscreen   ·   space: pause   ·   esc: back")
+	help := ui.HelpStyle.Render("v: exit fullscreen   ·   space: pause   ·   esc: back")
 	bottom := lipgloss.NewStyle().Width(width).Align(lipgloss.Center).Render(
 		lipgloss.JoinVertical(lipgloss.Center, track, help))
 
@@ -741,21 +742,21 @@ func (m *radioModule) fullVizView(width, height int) string {
 // helpView rendert die MODUL-spezifische Hilfe (nur Radio-Tasten).
 // Globale Befehle stehen auf der Dashboard-Hilfe (esc -> ?).
 func (m *radioModule) helpView() string {
-	sections := []helpSection{
-		{title: "search", rows: [][2]string{
+	sections := []ui.HelpSection{
+		{Title: "search", Rows: [][2]string{
 			{"enter", "search (empty = top DE)"},
 			{"ctrl+f", "show favorites"},
 			{"ctrl+r", "resume last station"},
 			{"esc", "back to dashboard"},
 		}},
-		{title: "list", rows: [][2]string{
+		{Title: "list", Rows: [][2]string{
 			{"↑/↓", "navigate"},
 			{"/", "filter"},
 			{"f", "toggle favorite"},
 			{"enter", "play station"},
 			{"esc", "back to search"},
 		}},
-		{title: "player", rows: [][2]string{
+		{Title: "player", Rows: [][2]string{
 			{"space", "play / pause"},
 			{"+ / −", "volume"},
 			{"m", "mute"},
@@ -766,7 +767,7 @@ func (m *radioModule) helpView() string {
 			{"esc / q", "back to list"},
 		}},
 	}
-	return helpOverlay("radio · help", sections, "? or esc to close   ·   global commands on the dashboard")
+	return ui.HelpOverlay("radio · help", sections, "? or esc to close   ·   global commands on the dashboard")
 }
 
 // footerView zeigt Status (links) und Lautstärke (rechts).
@@ -774,34 +775,34 @@ func (m *radioModule) footerView() string {
 	var statusText string
 	switch {
 	case m.flash != "":
-		statusText = lipgloss.NewStyle().Foreground(colPeach).Bold(true).Render(m.flash)
+		statusText = lipgloss.NewStyle().Foreground(ui.ColPeach).Bold(true).Render(m.flash)
 	case m.state == stateSearch:
-		statusText = dimStyle.Render("ready · enter for top DE charts")
+		statusText = ui.DimStyle.Render("ready · enter for top DE charts")
 	case m.state == stateList:
-		statusText = lipgloss.NewStyle().Foreground(colTeal).Render(m.list.Title)
+		statusText = lipgloss.NewStyle().Foreground(ui.ColTeal).Render(m.list.Title)
 	case m.uiPaused:
-		statusText = lipgloss.NewStyle().Foreground(colPeach).Render("❚❚ paused")
+		statusText = lipgloss.NewStyle().Foreground(ui.ColPeach).Render("❚❚ paused")
 	case m.err != nil:
-		statusText = lipgloss.NewStyle().Foreground(colError).Render("✕ " + m.err.Error())
+		statusText = lipgloss.NewStyle().Foreground(ui.ColError).Render("✕ " + m.err.Error())
 	case m.uiPlaying && m.metadata != "":
-		statusText = lipgloss.NewStyle().Foreground(colMauve).Render("♫ " + m.metadata)
+		statusText = lipgloss.NewStyle().Foreground(ui.ColMauve).Render("♫ " + m.metadata)
 	default:
-		statusText = dimStyle.Render("radio ready")
+		statusText = ui.DimStyle.Render("radio ready")
 	}
 
 	var volumeInfo string
 	if m.uiMuted {
-		volumeInfo = lipgloss.NewStyle().Foreground(colPeach).Render("🔇 muted")
+		volumeInfo = lipgloss.NewStyle().Foreground(ui.ColPeach).Render("🔇 muted")
 	} else {
-		bar := renderVolumeBar(m.uiVolume, 12)
+		bar := ui.RenderVolumeBar(m.uiVolume, 12)
 		volumeInfo = lipgloss.JoinHorizontal(lipgloss.Left,
-			dimStyle.Render("vol "),
+			ui.DimStyle.Render("vol "),
 			bar,
-			dimStyle.Render(fmt.Sprintf(" %3.0f%%", m.uiVolume*100)),
+			ui.DimStyle.Render(fmt.Sprintf(" %3.0f%%", m.uiVolume*100)),
 		)
 	}
 
-	rule := horizontalRule(m.width - 2)
+	rule := ui.HorizontalRule(m.width - 2)
 
 	spacerW := m.width - lipgloss.Width(statusText) - lipgloss.Width(volumeInfo) - 4
 	if spacerW < 1 {
