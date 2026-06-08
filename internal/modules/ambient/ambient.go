@@ -495,7 +495,9 @@ func (m *ambientModule) drawClock(g *grid) {
 // horizontal um cx zentriert, von topY nach unten height Zeilen.
 func (g *grid) stampBars(levels []float64, cx, topY, height int) {
 	bars := len(levels)
-	startX := cx - bars // bars*2 Spalten breit / 2
+	// Balken sitzen auf startX, startX+2, … startX+2(bars-1); sichtbare Breite
+	// 2*bars-1 (keine Lücke am Ende). Mitte = startX+(bars-1) -> auf cx legen.
+	startX := cx - (bars - 1)
 	for b, lv := range levels {
 		x := startX + b*2
 		for r := 0; r < height; r++ {
