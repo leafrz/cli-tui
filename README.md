@@ -9,8 +9,8 @@ internet radio player with a warm, lo-fi aesthetic. Built as a
 ## Download
 
 Grab a prebuilt binary from the [Releases](https://github.com/leafrz/cli-tui/releases)
-page (Windows / Linux / macOS), or build from source (below). On Linux the
-binary needs ALSA at runtime (`libasound2`).
+page (Windows / macOS), or build from source (below). Linux isn't shipped as a
+prebuilt binary, but it builds fine from source (needs `libasound2-dev`).
 
 The app boots into a small launcher ("what do you wanna do?") and routes into
 modules. The architecture is set up so more can drop in.
