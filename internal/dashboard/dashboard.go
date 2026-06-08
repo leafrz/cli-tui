@@ -16,6 +16,7 @@ import (
 	"github.com/leafrz/dashboard/internal/modules/radio"
 	"github.com/leafrz/dashboard/internal/modules/settings"
 	"github.com/leafrz/dashboard/internal/modules/sysmon"
+	"github.com/leafrz/dashboard/internal/modules/todo"
 )
 
 // headerTickMsg treibt Header-Animationen (rotate/marquee/context) und die Uhr.
@@ -93,6 +94,7 @@ func NewRoot() *rootModel {
 			{icon: "📻", name: "internet radio", desc: "stream stations worldwide", module: radio.New(player)},
 			{icon: "📊", name: "system monitor", desc: "cpu · memory · disk · network", module: sysmon.New()},
 			{icon: "🌌", name: "ambient", desc: "screensaver + clock + weather", module: ambient.New(player)},
+			{icon: "✓", name: "todo", desc: "tasks & checklist", module: todo.New()},
 			{icon: "⚙", name: "settings", desc: "theme · header · weather · screensaver", module: settings.New()},
 			{icon: "☀", name: "weather", desc: "coming soon", module: nil},
 		},
