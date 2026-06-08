@@ -1,8 +1,17 @@
 # lofi.radio
 
+![CI](https://github.com/leafrz/cli-tui/actions/workflows/ci.yml/badge.svg)
+
 A modular terminal dashboard, built to learn Go — currently centered on an
 internet radio player with a warm, lo-fi aesthetic. Built as a
 [Bubble Tea](https://github.com/charmbracelet/bubbletea) TUI.
+
+## Download
+
+Grab the prebuilt **Windows** binary from the
+[Releases](https://github.com/leafrz/cli-tui/releases) page, or build from
+source (below). macOS/Linux aren't shipped as prebuilt binaries but build fine
+from source (Linux needs `libasound2-dev`).
 
 The app boots into a small launcher ("what do you wanna do?") and routes into
 modules. The architecture is set up so more can drop in.
@@ -195,6 +204,11 @@ global header and delegates the rest. Adding a new module is roughly:
 [Bubbles](https://github.com/charmbracelet/bubbles) ·
 [Lip Gloss](https://github.com/charmbracelet/lipgloss) ·
 [beep](https://github.com/faiface/beep) (audio)
+
+## Known issues
+
+- The radio visualizer can occasionally get "stuck" / stop reacting until you
+  re-enter the player. Audio is unaffected.
 
 ## Roadmap
 

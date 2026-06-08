@@ -66,7 +66,12 @@ func statePath() (string, error) {
 // loadState lädt den persistenten Zustand. Fehlt die Datei, gibt es einen
 // sinnvollen Default zurück (kein Fehler).
 func loadState() persistedState {
-	def := persistedState{LastVolume: 1.0, Header: defaultHeaderConfig(), Theme: themes[0].name}
+	def := persistedState{
+		LastVolume: 1.0,
+		Header:     defaultHeaderConfig(),
+		Theme:      themes[0].name,
+		Weather:    weatherConfig{Mode: "auto"},
+	}
 
 	path, err := statePath()
 	if err != nil {
