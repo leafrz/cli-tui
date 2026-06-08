@@ -11,7 +11,15 @@ import (
 	"github.com/leafrz/dashboard/radio"
 )
 
+// version wird beim Release-Build per -ldflags aus dem Git-Tag gesetzt.
+var version = "dev"
+
 func main() {
+	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
+		fmt.Println("lofi-radio", version)
+		return
+	}
+
 	// Speaker EINMALIG mit fester Rate initialisieren und offen halten.
 	// Streams mit abweichender Rate werden im Player resampled.
 	if err := speaker.Init(radio.SampleRate, radio.SampleRate.N(time.Second/10)); err != nil {

@@ -6,6 +6,9 @@ import "testing"
 //
 //	go test . -run TestWeather -v
 func TestWeather(t *testing.T) {
+	if testing.Short() {
+		t.Skip("network test; skipped with -short")
+	}
 	// auto (IP-based)
 	if text, err := fetchWeather(weatherConfig{Mode: "auto"}); err != nil {
 		t.Skipf("weather unavailable (offline?): %v", err)

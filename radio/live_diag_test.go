@@ -19,6 +19,9 @@ import (
 //
 //	go test ./radio -run TestLivePipeline -v
 func TestLivePipeline(t *testing.T) {
+	if testing.Short() {
+		t.Skip("network test; skipped with -short")
+	}
 	const streamURL = "http://ice1.somafm.com/groovesalad-128-mp3"
 
 	ctx := context.Background()
