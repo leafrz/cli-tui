@@ -276,6 +276,9 @@ func (m *radioModule) startPlay() tea.Cmd {
 	m.err = nil
 	m.connecting = true
 	m.metadata = ""
+	if m.lastStation != nil {
+		m.radioPlayer.SetStationName(m.lastStation.Name) // für globalen Footer
+	}
 	return tea.Batch(m.playCmd(), m.spinner.Tick)
 }
 
@@ -590,10 +593,20 @@ func (m *radioModule) View(width, height int) string {
 	m.width = width
 	m.height = height
 
-	footer := m.footerView()
+	// Now-Playing/Volume zeigt der globale Footer (Root). Hier nur noch ein
+	// kurzer Flash-Toast (Favorit hinzugefügt/entfernt) bei Bedarf.
+	var footer string
+	if m.flash != "" {
+		footer = lipgloss.NewStyle().Width(width).Align(lipgloss.Center).
+			Foreground(ui.ColPeach).Bold(true).Render(m.flash)
+	}
+	footerH := 0
+	if footer != "" {
+		footerH = lipgloss.Height(footer)
+	}
 	contentStyle := lipgloss.NewStyle().Margin(1, 2)
 
-	contentHeight := height - lipgloss.Height(footer)
+	contentHeight := height - footerH
 	if contentHeight < 1 {
 		contentHeight = 1
 	}
@@ -608,7 +621,7 @@ func (m *radioModule) View(width, height int) string {
 		if m.searching {
 			card = ui.CardStyle.Render(m.spinner.View() + " " + ui.LabelStyle.Render("searching…"))
 		} else {
-			prompt := ui.LabelStyle.Render("find a config.Station or a mood")
+			prompt := ui.LabelStyle.Render("find a station or a mood")
 			input := lipgloss.NewStyle().Width(40).Render(m.textInput.View())
 			card = ui.CardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, prompt, "", input))
 		}
@@ -637,7 +650,10 @@ func (m *radioModule) View(width, height int) string {
 			lipgloss.Center, lipgloss.Center, playerRendered)
 	}
 
-	return lipgloss.JoinVertical(lipgloss.Left, content, footer)
+	if footer != "" {
+		return lipgloss.JoinVertical(lipgloss.Left, content, footer)
+	}
+	return content
 }
 
 func (m *radioModule) playerViewRender() string {
@@ -747,14 +763,14 @@ func (m *radioModule) helpView() string {
 		{Title: "search", Rows: [][2]string{
 			{"enter", "search (empty = top DE)"},
 			{"ctrl+f", "show favorites"},
-			{"ctrl+r", "resume last config.Station"},
+			{"ctrl+r", "resume last station"},
 			{"esc", "back to dashboard"},
 		}},
 		{Title: "list", Rows: [][2]string{
 			{"↑/↓", "navigate"},
 			{"/", "filter"},
 			{"f", "toggle favorite"},
-			{"enter", "play config.Station"},
+			{"enter", "play station"},
 			{"esc", "back to search"},
 		}},
 		{Title: "player", Rows: [][2]string{
@@ -764,58 +780,9 @@ func (m *radioModule) helpView() string {
 			{"v", "fullscreen visualizer"},
 			{"a", "ambient mode (keeps playing)"},
 			{"t", "sleep timer (15/30/60)"},
-			{"f", "favorite config.Station"},
+			{"f", "favorite station"},
 			{"esc / q", "back to list"},
 		}},
 	}
 	return ui.HelpOverlay("radio · help", sections, "? or esc to close   ·   global commands on the dashboard")
-}
-
-// footerView zeigt Status (links) und Lautstärke (rechts).
-func (m *radioModule) footerView() string {
-	var statusText string
-	switch {
-	case m.flash != "":
-		statusText = lipgloss.NewStyle().Foreground(ui.ColPeach).Bold(true).Render(m.flash)
-	case m.state == stateSearch:
-		statusText = ui.DimStyle.Render("ready · enter for top DE charts")
-	case m.state == stateList:
-		statusText = lipgloss.NewStyle().Foreground(ui.ColTeal).Render(m.list.Title)
-	case m.uiPaused:
-		statusText = lipgloss.NewStyle().Foreground(ui.ColPeach).Render("❚❚ paused")
-	case m.err != nil:
-		statusText = lipgloss.NewStyle().Foreground(ui.ColError).Render("✕ " + m.err.Error())
-	case m.uiPlaying && m.metadata != "":
-		statusText = lipgloss.NewStyle().Foreground(ui.ColMauve).Render("♫ " + m.metadata)
-	default:
-		statusText = ui.DimStyle.Render("radio ready")
-	}
-
-	var volumeInfo string
-	if m.uiMuted {
-		volumeInfo = lipgloss.NewStyle().Foreground(ui.ColPeach).Render("🔇 muted")
-	} else {
-		bar := ui.RenderVolumeBar(m.uiVolume, 12)
-		volumeInfo = lipgloss.JoinHorizontal(lipgloss.Left,
-			ui.DimStyle.Render("vol "),
-			bar,
-			ui.DimStyle.Render(fmt.Sprintf(" %3.0f%%", m.uiVolume*100)),
-		)
-	}
-
-	rule := ui.HorizontalRule(m.width - 2)
-
-	spacerW := m.width - lipgloss.Width(statusText) - lipgloss.Width(volumeInfo) - 4
-	if spacerW < 1 {
-		spacerW = 1
-	}
-	row := lipgloss.JoinHorizontal(lipgloss.Bottom,
-		statusText,
-		lipgloss.NewStyle().Width(spacerW).Render(""),
-		volumeInfo,
-	)
-
-	return lipgloss.NewStyle().Padding(0, 1).Render(
-		lipgloss.JoinVertical(lipgloss.Left, rule, row),
-	)
 }

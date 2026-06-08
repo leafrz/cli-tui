@@ -24,7 +24,7 @@ func isFavorite(favs []config.Station, url string) bool {
 	return false
 }
 
-// markFavorites setzt das Favorite-Flag auf allen config.Station-Items.
+// markFavorites setzt das Favorite-Flag auf allen station-Items.
 func markFavorites(items []list.Item, favs []config.Station) {
 	for i, it := range items {
 		if s, ok := it.(config.Station); ok {

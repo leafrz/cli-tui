@@ -27,6 +27,7 @@ modules. The architecture is set up so more can drop in.
   radio's live audio (real FFT, not faked); press `v` for full-screen
 - **System monitor** — live CPU (overall + per-core), memory, disk, and
   network throughput with gauges and sparklines
+- **Todo** — a simple persisted checklist (add / toggle / delete / clear done)
 - **Ambient** — a "leave it open" screen: 13 animated scenes (starfield,
   matrix, rain, snow, plasma, life, fireworks, dvd, waves, fire, ripples,
   spiral, blank) with optional auto-rotate, a big block clock, live
@@ -39,6 +40,9 @@ modules. The architecture is set up so more can drop in.
   (incl. turning it off), and the screensaver, all live + persisted
 - **Themes** — switchable color palettes (lofi / midnight / sepia / forest /
   rosepine / nord / noir), applied live and persisted
+- **Global now-playing bar** — a persistent bottom bar in every module shows
+  the current track + station and volume, with media keys (pause/volume) that
+  work from anywhere
 - Per-user state stored outside the repo (favorites, header text, etc.)
 
 ## Requirements
@@ -69,15 +73,17 @@ go build -o lofi-radio ./cmd/lofi-radio
 
 ## Keybindings
 
-### Dashboard (launcher)
+### Dashboard / global (works from any module)
 | Key | Action |
 |-----|--------|
-| `↑` / `↓` | Select module |
+| `↑` / `↓` | Select module (in launcher) |
 | `enter` | Open module |
 | `ctrl+t` | Cycle header mode (static → rotate → marquee → context) |
 | `ctrl+e` | Edit header text |
 | `ctrl+p` | Cycle theme (7 palettes: lofi, midnight, sepia, forest, rosepine, nord, noir) |
-| `?` | Global help |
+| `ctrl+space` | Play / pause the radio (from anywhere) |
+| `ctrl+↑` / `ctrl+↓` | Volume up / down (from anywhere) |
+| `?` | Global help (in launcher) |
 | `ctrl+c` | Quit |
 
 ### Radio module
@@ -113,6 +119,17 @@ go build -o lofi-radio ./cmd/lofi-radio
 The dashboard also **auto-drops into ambient after ~2 min of no input** (a
 real screensaver); any key wakes it back to where you were. Ambient remembers
 your last scene + clock settings.
+
+### Todo module
+| Key | Action |
+|-----|--------|
+| `a` | Add a task |
+| `e` | Edit selected task |
+| `space` / `enter` | Toggle done |
+| `d` | Delete task |
+| `c` | Clear completed |
+| `↑` / `↓` | Navigate |
+| `esc` | Back to dashboard |
 
 Press `?` inside a module for module-specific help.
 
@@ -182,6 +199,7 @@ internal/
     radio/          Radio module (search / list / player / visualizer)
     sysmon/         System-monitor module (gopsutil)
     ambient/        Ambient module (scenes, clock, weather, now-playing)
+    todo/           Todo / checklist module
     settings/       Settings module (live config via reloadConfigMsg)
 ```
 

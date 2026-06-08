@@ -16,6 +16,7 @@ import (
 	"github.com/leafrz/dashboard/internal/modules/radio"
 	"github.com/leafrz/dashboard/internal/modules/settings"
 	"github.com/leafrz/dashboard/internal/modules/sysmon"
+	"github.com/leafrz/dashboard/internal/modules/todo"
 )
 
 // headerTickMsg treibt Header-Animationen (rotate/marquee/context) und die Uhr.
@@ -72,6 +73,8 @@ type rootModel struct {
 	prevActive  int
 	idleTimeout time.Duration
 	ambientIdx  int
+
+	player *audio.Player // geteilt; für globalen Now-Playing-Footer + Media-Tasten
 }
 
 func NewRoot() *rootModel {
@@ -93,6 +96,7 @@ func NewRoot() *rootModel {
 			{icon: "📻", name: "internet radio", desc: "stream stations worldwide", module: radio.New(player)},
 			{icon: "📊", name: "system monitor", desc: "cpu · memory · disk · network", module: sysmon.New()},
 			{icon: "🌌", name: "ambient", desc: "screensaver + clock + weather", module: ambient.New(player)},
+			{icon: "✓", name: "todo", desc: "tasks & checklist", module: todo.New()},
 			{icon: "⚙", name: "settings", desc: "theme · header · weather · screensaver", module: settings.New()},
 			{icon: "☀", name: "weather", desc: "coming soon", module: nil},
 		},
@@ -103,6 +107,7 @@ func NewRoot() *rootModel {
 		lastInput:   time.Now(),
 		idleTimeout: st.Ambient.IdleTimeout(),
 		ambientIdx:  -1,
+		player:      player,
 	}
 	for i := range r.entries {
 		if r.entries[i].name == "ambient" {
@@ -249,6 +254,19 @@ func (r *rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			r.theme = ui.NextThemeName(r.theme)
 			ui.ApplyTheme(ui.ThemeByName(r.theme))
 			return r, tea.Batch(r.saveThemeCmd(), core.ThemeChanged)
+
+		// Globale Media-Tasten (aus jedem Modul): Pause + Volume.
+		case "ctrl+@", "ctrl+ ": // ctrl+space
+			if playing, _, _ := r.player.GetStatus(); playing {
+				r.player.TogglePause()
+			}
+			return r, nil
+		case "ctrl+up":
+			r.player.AdjustVolume(0.1)
+			return r, nil
+		case "ctrl+down":
+			r.player.AdjustVolume(-0.1)
+			return r, nil
 		}
 
 		// 3) Launcher-Navigation (kein aktives Modul).
@@ -294,9 +312,8 @@ func (r *rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (r *rootModel) View() string {
 	header := r.headerView()
-	headerH := lipgloss.Height(header)
-
-	contentH := r.height - headerH
+	footer := r.footerView()
+	contentH := r.height - lipgloss.Height(header) - lipgloss.Height(footer)
 	if contentH < 1 {
 		contentH = 1
 	}
@@ -315,7 +332,68 @@ func (r *rootModel) View() string {
 		content = r.activeModule().View(r.width, contentH)
 	}
 
-	return lipgloss.JoinVertical(lipgloss.Left, header, content)
+	return lipgloss.JoinVertical(lipgloss.Left, header, content, footer)
+}
+
+// footerView ist die globale Now-Playing-/Volume-Leiste (in jedem Modul sichtbar).
+func (r *rootModel) footerView() string {
+	playing, paused, vol := r.player.GetStatus()
+	muted := r.player.IsMuted()
+
+	var left string
+	if playing {
+		icon, col := "▶", ui.ColMauve
+		if paused {
+			icon, col = "❚❚", ui.ColPeach
+		}
+		label := r.player.StationName()
+		if track := r.player.GetMetadata(); track != "" {
+			if label != "" {
+				label = track + "  ·  " + label
+			} else {
+				label = track
+			}
+		}
+		if label == "" {
+			label = "live"
+		}
+		left = lipgloss.NewStyle().Foreground(col).Render(icon + " " + truncate(label, r.width-24))
+	} else {
+		left = ui.DimStyle.Render("○ nothing playing")
+	}
+
+	var right string
+	if muted {
+		right = lipgloss.NewStyle().Foreground(ui.ColPeach).Render("🔇 muted")
+	} else {
+		right = ui.DimStyle.Render("vol ") + ui.RenderVolumeBar(vol, 10) +
+			ui.DimStyle.Render(fmt.Sprintf(" %3.0f%%", vol*100))
+	}
+
+	spacerW := r.width - lipgloss.Width(left) - lipgloss.Width(right) - 4
+	if spacerW < 1 {
+		spacerW = 1
+	}
+	row := lipgloss.JoinHorizontal(lipgloss.Bottom,
+		left, lipgloss.NewStyle().Width(spacerW).Render(""), right)
+
+	return lipgloss.NewStyle().Padding(0, 1).Render(
+		lipgloss.JoinVertical(lipgloss.Left, ui.HorizontalRule(r.width-2), row))
+}
+
+// truncate kürzt s (nach Runen) auf max Zeichen mit "…".
+func truncate(s string, max int) string {
+	if max < 1 {
+		max = 1
+	}
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	if max == 1 {
+		return "…"
+	}
+	return string(r[:max-1]) + "…"
 }
 
 // launcherView rendert das Startmenü.
@@ -359,6 +437,10 @@ func globalHelpView(theme string) string {
 			{"ctrl+t", "cycle header mode"},
 			{"ctrl+e", "edit header text"},
 			{"ctrl+p", "cycle theme (now: " + theme + ")"},
+		}},
+		{Title: "playback (from anywhere)", Rows: [][2]string{
+			{"ctrl+space", "play / pause"},
+			{"ctrl+↑/↓", "volume"},
 		}},
 		{Title: "app", Rows: [][2]string{
 			{"?", "toggle this help"},

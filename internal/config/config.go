@@ -17,6 +17,7 @@ type State struct {
 	Theme       string        `json:"theme"`
 	Weather     WeatherConfig `json:"weather"`
 	Ambient     AmbientConfig `json:"ambient"`
+	Todos       []TodoItem    `json:"todos"`
 }
 
 // AmbientConfig merkt sich Ambient-Vorlieben. Bools sind so gewählt, dass der
