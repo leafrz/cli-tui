@@ -40,9 +40,26 @@ jobs:
         # Version aus dem Tag in das Binary injizieren.
         run: go build -ldflags "-s -w -X main.version=${{ github.ref_name }}" -o "${{ matrix.asset }}${{ matrix.ext }}" .
 
-      - name: Attach to release
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}${{ matrix.ext }}
+
+  # Ein einziger Job legt das Release an -> kein Race zwischen den Build-Jobs.
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create draft release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ matrix.asset }}${{ matrix.ext }}
+          files: dist/*
           draft: true
           generate_release_notes: true
