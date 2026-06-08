@@ -203,11 +203,6 @@ Status). Adding one is roughly:
 [Lip Gloss](https://github.com/charmbracelet/lipgloss) ·
 [beep](https://github.com/faiface/beep) (audio)
 
-## Known issues
-
-- The radio visualizer can occasionally get "stuck" / stop reacting until you
-  re-enter the player. Audio is unaffected.
-
 ## Roadmap
 
 - [x] System monitor module

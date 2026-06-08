@@ -377,11 +377,11 @@ func (m *radioModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 			cmds = append(cmds, textinput.Blink)
 		}
 		if m.uiPlaying && m.state == statePlayer {
-			cmds = append(cmds, m.fetchMetaCmd(), doTick())
-			if !m.animTicking {
-				m.animTicking = true
-				cmds = append(cmds, animCmd())
-			}
+			// Die Ticker sind beim Inaktiv-Sein gestorben (animMsg ging ans dann
+			// aktive Modul). animTicking kann veraltet true sein -> bedingungslos
+			// neu starten, sonst bleibt der Visualizer stehen.
+			m.animTicking = true
+			cmds = append(cmds, m.fetchMetaCmd(), doTick(), animCmd())
 		}
 		return m, tea.Batch(cmds...)
 
