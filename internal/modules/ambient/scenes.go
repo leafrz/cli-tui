@@ -445,7 +445,9 @@ func (s *dvdScene) name() string { return "dvd" }
 
 func (s *dvdScene) advance(w, h int, rng *rand.Rand) {
 	s.w, s.h = w, h
-	s.logo = "◆ lofi ◆"
+	if s.logo == "" {
+		s.logo = "◆ radio ◆"
+	}
 	if !s.initd {
 		s.x, s.y = float64(w)/2, float64(h)/2
 		s.vx, s.vy = 0.7, 0.4

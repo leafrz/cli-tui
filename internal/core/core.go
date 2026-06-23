@@ -40,3 +40,9 @@ func ThemeChanged() tea.Msg { return ThemeChangedMsg{} }
 type FocusMsg struct{}
 
 func FocusModule() tea.Msg { return FocusMsg{} }
+
+// AutostartMsg signalisiert den Autostart-/Kiosk-Modus: den zuletzt gespielten
+// Sender fortsetzen und in den rotierenden Ambient-Modus wechseln.
+type AutostartMsg struct{}
+
+func Autostart() tea.Msg { return AutostartMsg{} }
