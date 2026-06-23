@@ -145,7 +145,20 @@ func New(p *audio.Player) *ambientModule {
 			m.style = i
 		}
 	}
+	m.setDvdLogo(st.Header.Text)
 	return m
+}
+
+// setDvdLogo writes the header text into the dvd bounce scene logo.
+func (m *ambientModule) setDvdLogo(text string) {
+	for _, sc := range m.scenes {
+		if d, ok := sc.(*dvdScene); ok {
+			if text != "" {
+				d.logo = text
+			}
+			return
+		}
+	}
 }
 
 // persistPrefsCmd speichert die Ambient-Vorlieben (merge; Idle-Felder bleiben).
@@ -223,6 +236,12 @@ func (m *ambientModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 
+	case core.AutostartMsg:
+		// Autostart: Szenen-Rotation einschalten.
+		m.autoRotate = true
+		m.rotateCounter = 0
+		return m, nil
+
 	case core.FocusMsg:
 		cmds := []tea.Cmd{}
 		if !m.ticking {
@@ -273,6 +292,7 @@ func (m *ambientModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 				m.style = i
 			}
 		}
+		m.setDvdLogo(st.Header.Text)
 		m.weatherLine = ""
 		m.weatherAt = time.Time{} // beim nächsten Tick/Focus neu holen (oder aus)
 		return m, nil

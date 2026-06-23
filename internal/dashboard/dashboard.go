@@ -74,10 +74,12 @@ type rootModel struct {
 	idleTimeout time.Duration
 	ambientIdx  int
 
+	autostart bool // beim Start zuletzt gespielten Sender + Ambient-Rotation
+
 	player *audio.Player // geteilt; für globalen Now-Playing-Footer + Media-Tasten
 }
 
-func NewRoot() *rootModel {
+func NewRoot(autostart bool) *rootModel {
 	st := config.Load()
 	ui.ApplyTheme(ui.ThemeByName(st.Theme)) // Palette setzen, bevor irgendwas rendert
 
@@ -107,6 +109,7 @@ func NewRoot() *rootModel {
 		lastInput:   time.Now(),
 		idleTimeout: st.Ambient.IdleTimeout(),
 		ambientIdx:  -1,
+		autostart:   autostart,
 		player:      player,
 	}
 	for i := range r.entries {
@@ -135,6 +138,9 @@ func (r *rootModel) Init() tea.Cmd {
 	}
 	cmds = append(cmds, headerTickCmd(r.header.Animated()))
 	cmds = append(cmds, idleTick())
+	if r.autostart {
+		cmds = append(cmds, core.Autostart)
+	}
 	return tea.Batch(cmds...)
 }
 
@@ -180,6 +186,23 @@ func (r *rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return r, nil
+
+	case core.AutostartMsg:
+		// Modulen Bescheid geben (Radio: Sender fortsetzen, Ambient: Rotation an)
+		// und direkt in den Ambient-Modus wechseln.
+		var cmds []tea.Cmd
+		for i := range r.entries {
+			if r.entries[i].module != nil {
+				mod, c := r.entries[i].module.Update(msg)
+				r.entries[i].module = mod
+				cmds = append(cmds, c)
+			}
+		}
+		if r.ambientIdx >= 0 {
+			r.active = r.ambientIdx
+			cmds = append(cmds, core.FocusModule)
+		}
+		return r, tea.Batch(cmds...)
 
 	case core.ThemeChangedMsg:
 		// an ALLE core.Module weiterreichen, damit auch inaktive ihre Styles anpassen.

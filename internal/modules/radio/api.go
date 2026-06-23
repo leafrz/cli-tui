@@ -5,12 +5,37 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/list"
 
 	"github.com/leafrz/dashboard/internal/config"
 )
+
+// isStreamURL erkennt eine direkt abspielbare Stream-URL (http/https).
+func isStreamURL(s string) bool {
+	u, err := url.Parse(strings.TrimSpace(s))
+	if err != nil {
+		return false
+	}
+	return (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
+}
+
+// customStation baut einen Sender aus einer benutzerdefinierten Stream-URL.
+// Der Hostname dient als Anzeigename, falls vorhanden.
+func customStation(raw string) config.Station {
+	raw = strings.TrimSpace(raw)
+	name := raw
+	if u, err := url.Parse(raw); err == nil && u.Host != "" {
+		name = u.Host
+	}
+	return config.Station{
+		Name:      name,
+		StreamURL: raw,
+		Tags:      "custom stream",
+	}
+}
 
 // SearchStations fragt die Radio-Browser-API ab.
 func SearchStations(query string) []list.Item {
