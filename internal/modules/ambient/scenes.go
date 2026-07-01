@@ -30,6 +30,14 @@ func buildScenes() []scene {
 		&fireScene{},
 		&ripplesScene{},
 		&spiralScene{},
+		&auroraScene{},
+		&lavaScene{},
+		&lissajousScene{},
+		&swarmScene{},
+		&cometsScene{},
+		&bubblesScene{},
+		&pongScene{},
+		&tunnelScene{},
 		&blankScene{},
 	}
 }
@@ -618,6 +626,485 @@ func (s *spiralScene) draw(g *grid, rng *rand.Rand) {
 			x := int(cx + r*math.Cos(theta))
 			y := int(cy + r*math.Sin(theta)*0.5)
 			g.set(x, y, '*', gradColor(t/maxT))
+		}
+	}
+}
+
+// --- aurora ----------------------------------------------------------------
+// Wavernde vertikale Lichtvorhänge (Nordlicht), Farbe nach Höhe.
+
+type auroraScene struct{ t float64 }
+
+func (s *auroraScene) name() string                     { return "aurora" }
+func (s *auroraScene) advance(w, h int, rng *rand.Rand) { s.t += 0.05 }
+
+func (s *auroraScene) draw(g *grid, rng *rand.Rand) {
+	top := g.h / 6
+	for x := 0; x < g.w; x++ {
+		fx := float64(x)
+		inten := (math.Sin(fx*0.15+s.t)+math.Sin(fx*0.06-s.t*0.7))/2 +
+			0.35*math.Sin(fx*0.28+s.t*1.6)
+		if inten <= 0 {
+			continue
+		}
+		height := int(inten * float64(g.h) * 0.75)
+		for y := top; y < top+height && y < g.h; y++ {
+			f := 1 - float64(y-top)/float64(height+1) // hell oben -> dunkel unten
+			var col lipgloss.Color
+			switch {
+			case f < 0.3:
+				col = ui.ColFaint
+			case f < 0.55:
+				col = ui.ColTeal
+			case f < 0.8:
+				col = ui.ColGood
+			default:
+				col = ui.ColCream
+			}
+			g.set(x, y, rampChar(0.3+f*0.7), col)
+		}
+	}
+}
+
+// --- lava lamp (metaballs) -------------------------------------------------
+// Weiche, verschmelzende Blobs über ein Schwellenwertfeld.
+
+type blob struct{ x, y, vx, vy, r float64 }
+
+type lavaScene struct {
+	w, h  int
+	blobs []blob
+}
+
+func (s *lavaScene) name() string { return "lava" }
+
+func (s *lavaScene) ensure(w, h int, rng *rand.Rand) {
+	if w == s.w && h == s.h && s.blobs != nil {
+		return
+	}
+	s.w, s.h = w, h
+	n := 4 + rng.Intn(2)
+	s.blobs = make([]blob, n)
+	for i := range s.blobs {
+		s.blobs[i] = blob{
+			x:  rng.Float64() * float64(w),
+			y:  rng.Float64() * float64(h),
+			vx: (rng.Float64()*2 - 1) * 0.5,
+			vy: (rng.Float64()*2 - 1) * 0.3,
+			r:  float64(h)/4 + rng.Float64()*float64(h)/6,
+		}
+	}
+}
+
+func (s *lavaScene) advance(w, h int, rng *rand.Rand) {
+	s.ensure(w, h, rng)
+	for i := range s.blobs {
+		b := &s.blobs[i]
+		b.x += b.vx
+		b.y += b.vy
+		if b.x < 0 || b.x >= float64(w) {
+			b.vx = -b.vx
+		}
+		if b.y < 0 || b.y >= float64(h) {
+			b.vy = -b.vy
+		}
+	}
+}
+
+func (s *lavaScene) draw(g *grid, rng *rand.Rand) {
+	s.ensure(g.w, g.h, rng)
+	for y := 0; y < g.h; y++ {
+		for x := 0; x < g.w; x++ {
+			var v float64
+			for _, b := range s.blobs {
+				dx := float64(x) - b.x
+				dy := (float64(y) - b.y) * 2 // Zellen sind ~2:1 -> y strecken
+				v += (b.r * b.r) / (dx*dx + dy*dy + 1)
+			}
+			if v < 0.7 {
+				continue
+			}
+			n := math.Min(1, (v-0.7)/1.3)
+			g.set(x, y, rampChar(n), gradColor(n))
+		}
+	}
+}
+
+// --- lissajous -------------------------------------------------------------
+// Elegante parametrische Kurve, die langsam ihre Form ändert.
+
+type lissajousScene struct{ t float64 }
+
+func (s *lissajousScene) name() string                     { return "lissajous" }
+func (s *lissajousScene) advance(w, h int, rng *rand.Rand) { s.t += 0.04 }
+
+func (s *lissajousScene) draw(g *grid, rng *rand.Rand) {
+	cx, cy := float64(g.w)/2, float64(g.h)/2
+	ax, ay := cx-2, cy-1
+	a := 3.0 + math.Sin(s.t*0.13)
+	b := 2.0 + math.Cos(s.t*0.09)
+	for u := 0.0; u < 2*math.Pi; u += 0.008 {
+		x := int(cx + ax*math.Sin(a*u+s.t))
+		y := int(cy + ay*math.Sin(b*u))
+		g.set(x, y, '•', gradColor(u/(2*math.Pi)))
+	}
+}
+
+// --- swarm (boids) ---------------------------------------------------------
+// Schwarm aus Punkten mit leichtem Flocking, folgt einem wandernden Ziel.
+
+type boid struct{ x, y, vx, vy float64 }
+
+type swarmScene struct {
+	w, h int
+	bs   []boid
+	t    float64
+}
+
+func (s *swarmScene) name() string { return "swarm" }
+
+func (s *swarmScene) ensure(w, h int, rng *rand.Rand) {
+	if w == s.w && h == s.h && s.bs != nil {
+		return
+	}
+	s.w, s.h = w, h
+	n := w * h / 60
+	if n < 20 {
+		n = 20
+	}
+	if n > 60 {
+		n = 60
+	}
+	s.bs = make([]boid, n)
+	for i := range s.bs {
+		s.bs[i] = boid{rng.Float64() * float64(w), rng.Float64() * float64(h),
+			rng.Float64()*2 - 1, rng.Float64()*2 - 1}
+	}
+}
+
+func (s *swarmScene) advance(w, h int, rng *rand.Rand) {
+	s.ensure(w, h, rng)
+	s.t += 0.02
+	// Wanderndes Ziel (Lissajous-Pfad).
+	tx := float64(w)/2 + float64(w)/3*math.Sin(s.t)
+	ty := float64(h)/2 + float64(h)/3*math.Sin(s.t*1.3)
+	for i := range s.bs {
+		b := &s.bs[i]
+		// Kohäsion zum Ziel.
+		b.vx += (tx - b.x) * 0.002
+		b.vy += (ty - b.y) * 0.002
+		// Separation von nahen Nachbarn.
+		for j := range s.bs {
+			if j == i {
+				continue
+			}
+			dx, dy := b.x-s.bs[j].x, b.y-s.bs[j].y
+			d2 := dx*dx + dy*dy
+			if d2 > 0 && d2 < 9 {
+				b.vx += dx / d2 * 0.35
+				b.vy += dy / d2 * 0.35
+			}
+		}
+		// Geschwindigkeit begrenzen.
+		sp := math.Hypot(b.vx, b.vy)
+		if sp > 1.2 {
+			b.vx, b.vy = b.vx/sp*1.2, b.vy/sp*1.2
+		}
+		b.x += b.vx
+		b.y += b.vy
+	}
+}
+
+func (s *swarmScene) draw(g *grid, rng *rand.Rand) {
+	s.ensure(g.w, g.h, rng)
+	for _, b := range s.bs {
+		sp := math.Hypot(b.vx, b.vy)
+		ch, col := '·', ui.ColTeal
+		switch {
+		case sp > 0.9:
+			ch, col = '●', ui.ColPeach
+		case sp > 0.5:
+			ch, col = '•', ui.ColMauve
+		}
+		g.set(int(b.x), int(b.y), ch, col)
+	}
+}
+
+// --- comets (meteor shower) --------------------------------------------------
+// Schräg fallende Meteore mit ausblendendem Schweif vor dünnem Sternhimmel.
+
+type comet struct{ x, y, spd float64 }
+
+type cometsScene struct {
+	w, h   int
+	cs     []comet
+	stars  []int // Indizes fixer Hintergrundsterne
+	starsN int
+}
+
+func (s *cometsScene) name() string { return "comets" }
+
+func (s *cometsScene) ensure(w, h int, rng *rand.Rand) {
+	if w == s.w && h == s.h && s.cs != nil {
+		return
+	}
+	s.w, s.h = w, h
+	n := w / 12
+	if n < 4 {
+		n = 4
+	}
+	s.cs = make([]comet, n)
+	for i := range s.cs {
+		s.cs[i] = comet{rng.Float64() * float64(w) * 1.5, rng.Float64() * float64(h), 0.6 + rng.Float64()*0.9}
+	}
+	s.starsN = w * h / 80
+	s.stars = make([]int, s.starsN)
+	for i := range s.stars {
+		s.stars[i] = rng.Intn(w * h)
+	}
+}
+
+func (s *cometsScene) advance(w, h int, rng *rand.Rand) {
+	s.ensure(w, h, rng)
+	for i := range s.cs {
+		c := &s.cs[i]
+		c.x -= c.spd * 1.6 // nach links unten
+		c.y += c.spd * 0.5
+		if c.x < -8 || c.y >= float64(h)+4 {
+			c.x = float64(w) + rng.Float64()*float64(w)*0.5
+			c.y = -rng.Float64() * float64(h) * 0.5
+			c.spd = 0.6 + rng.Float64()*0.9
+		}
+	}
+}
+
+func (s *cometsScene) draw(g *grid, rng *rand.Rand) {
+	s.ensure(g.w, g.h, rng)
+	for _, idx := range s.stars {
+		g.set(idx%g.w, idx/g.w, '·', ui.ColFaint)
+	}
+	for _, c := range s.cs {
+		// Schweif entgegen der Flugrichtung (nach rechts oben).
+		for t := 0; t < 7; t++ {
+			x := int(c.x) + t*2
+			y := int(c.y) - t/2
+			ch, col := '─', ui.ColFaint
+			switch {
+			case t == 0:
+				ch, col = '●', ui.ColCream
+			case t < 3:
+				ch, col = '━', ui.ColPeach
+			case t < 5:
+				ch, col = '─', ui.ColMauve
+			}
+			g.set(x, y, ch, col)
+		}
+	}
+}
+
+// --- bubbles -----------------------------------------------------------------
+// Blasen steigen wackelnd auf und "ploppen" kurz vor der Oberfläche.
+
+type bubble struct {
+	x, y, spd, wob float64
+	big            bool
+}
+
+type bubblesScene struct {
+	w, h int
+	bs   []bubble
+}
+
+func (s *bubblesScene) name() string { return "bubbles" }
+
+func (s *bubblesScene) ensure(w, h int, rng *rand.Rand) {
+	if w == s.w && h == s.h && s.bs != nil {
+		return
+	}
+	s.w, s.h = w, h
+	n := w * h / 55
+	if n < 15 {
+		n = 15
+	}
+	s.bs = make([]bubble, n)
+	for i := range s.bs {
+		s.bs[i] = bubble{
+			x: rng.Float64() * float64(w), y: rng.Float64() * float64(h),
+			spd: 0.15 + rng.Float64()*0.4, wob: rng.Float64() * 2 * math.Pi,
+			big: rng.Float64() < 0.3,
+		}
+	}
+}
+
+func (s *bubblesScene) advance(w, h int, rng *rand.Rand) {
+	s.ensure(w, h, rng)
+	for i := range s.bs {
+		b := &s.bs[i]
+		b.y -= b.spd
+		b.wob += 0.15
+		b.x += math.Sin(b.wob) * 0.35
+		if b.y < 1 {
+			b.x, b.y = rng.Float64()*float64(w), float64(h)-1
+			b.spd = 0.15 + rng.Float64()*0.4
+			b.big = rng.Float64() < 0.3
+		}
+	}
+}
+
+func (s *bubblesScene) draw(g *grid, rng *rand.Rand) {
+	s.ensure(g.w, g.h, rng)
+	for _, b := range s.bs {
+		ch, col := '∘', ui.ColDim
+		switch {
+		case b.y < 3: // kurz vor der Oberfläche: plopp
+			ch, col = '*', ui.ColCream
+		case b.big:
+			ch, col = 'O', ui.ColTeal
+		case b.spd > 0.35:
+			ch, col = 'o', ui.ColTeal
+		}
+		g.set(int(b.x), int(b.y), ch, col)
+	}
+}
+
+// --- pong (self-playing) -----------------------------------------------------
+// Zwei KI-Paddles spielen endlos gegeneinander; Score oben.
+
+type pongScene struct {
+	w, h           int
+	bx, by, vx, vy float64
+	lp, rp         float64 // Paddle-Mitte links/rechts
+	ls, rs         int     // Score
+	initd          bool
+}
+
+func (s *pongScene) name() string { return "pong" }
+
+const pongPad = 3 // halbe Paddle-Höhe
+
+func (s *pongScene) reset(w, h int, dir float64) {
+	s.bx, s.by = float64(w)/2, float64(h)/2
+	s.vx, s.vy = 0.9*dir, 0.35
+}
+
+func (s *pongScene) advance(w, h int, rng *rand.Rand) {
+	if !s.initd || w != s.w || h != s.h {
+		s.w, s.h = w, h
+		s.lp, s.rp = float64(h)/2, float64(h)/2
+		s.reset(w, h, 1)
+		s.initd = true
+	}
+	s.bx += s.vx
+	s.by += s.vy
+
+	// Wände oben/unten.
+	if s.by <= 1 || s.by >= float64(h-1) {
+		s.vy = -s.vy
+	}
+
+	// Paddles folgen dem Ball (leicht träge + Zittern -> verlieren manchmal).
+	track := func(p float64, active bool) float64 {
+		target := s.by
+		if !active {
+			target = float64(h) / 2
+		}
+		p += (target - p) * 0.08
+		p += (rng.Float64() - 0.5) * 0.4
+		if p < pongPad+1 {
+			p = pongPad + 1
+		}
+		if p > float64(h)-pongPad-1 {
+			p = float64(h) - pongPad - 1
+		}
+		return p
+	}
+	s.lp = track(s.lp, s.vx < 0)
+	s.rp = track(s.rp, s.vx > 0)
+
+	// Paddle-Kollision / Punkt.
+	if s.bx <= 2 {
+		if math.Abs(s.by-s.lp) <= pongPad+1 {
+			s.vx = -s.vx * 1.03
+			s.vy += (s.by - s.lp) * 0.12
+		} else {
+			s.rs++
+			s.reset(w, h, 1)
+		}
+	}
+	if s.bx >= float64(w-2) {
+		if math.Abs(s.by-s.rp) <= pongPad+1 {
+			s.vx = -s.vx * 1.03
+			s.vy += (s.by - s.rp) * 0.12
+		} else {
+			s.ls++
+			s.reset(w, h, -1)
+		}
+	}
+	// Tempo deckeln.
+	if math.Abs(s.vx) > 1.6 {
+		s.vx = 1.6 * math.Copysign(1, s.vx)
+	}
+	if math.Abs(s.vy) > 0.9 {
+		s.vy = 0.9 * math.Copysign(1, s.vy)
+	}
+}
+
+func (s *pongScene) draw(g *grid, rng *rand.Rand) {
+	if !s.initd {
+		return
+	}
+	// Mittellinie + Score.
+	for y := 0; y < g.h; y += 2 {
+		g.set(g.w/2, y, '┊', ui.ColFaint)
+	}
+	score := fmtScore(s.ls) + " · " + fmtScore(s.rs)
+	g.stampText(centerX(g.w, score), 1, score, ui.ColDim)
+
+	// Paddles.
+	for d := -pongPad; d <= pongPad; d++ {
+		g.set(1, int(s.lp)+d, '█', ui.ColTeal)
+		g.set(g.w-2, int(s.rp)+d, '█', ui.ColMauve)
+	}
+	g.set(int(s.bx), int(s.by), '●', ui.ColPeach)
+}
+
+func fmtScore(n int) string {
+	if n > 99 {
+		n = 99
+	}
+	return string(rune('0'+n/10)) + string(rune('0'+n%10))
+}
+
+// --- tunnel ------------------------------------------------------------------
+// Flug durch konzentrische Ringe, die aus der Mitte heranzoomen.
+
+type tunnelScene struct{ t float64 }
+
+func (s *tunnelScene) name() string                     { return "tunnel" }
+func (s *tunnelScene) advance(w, h int, rng *rand.Rand) { s.t += 0.06 }
+
+func (s *tunnelScene) draw(g *grid, rng *rand.Rand) {
+	cx, cy := float64(g.w)/2, float64(g.h)/2
+	maxR := math.Max(cx, cy*2)
+	const rings = 9
+	for k := 0; k < rings; k++ {
+		// Ringe wandern zyklisch von innen (0) nach außen (1), exponentiell
+		// beschleunigt -> Zoom-Gefühl.
+		f := math.Mod(float64(k)/rings+s.t*0.15, 1)
+		r := math.Pow(f, 2.2) * maxR
+		if r < 1 {
+			continue
+		}
+		drift := math.Sin(s.t*0.7) * r * 0.25 // Tunnel schlängelt sich leicht
+		col := gradColor(f)
+		step := 0.35 / (r + 1) * 6
+		if step > 0.3 {
+			step = 0.3
+		}
+		for a := 0.0; a < 2*math.Pi; a += step {
+			x := int(cx + drift + r*math.Cos(a))
+			y := int(cy + r*math.Sin(a)*0.5)
+			g.set(x, y, rampChar(0.2+f*0.8), col)
 		}
 	}
 }
