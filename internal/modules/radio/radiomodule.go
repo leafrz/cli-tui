@@ -47,6 +47,26 @@ type searchResultMsg struct {
 // clearFlashMsg löscht die transiente Toast-Nachricht.
 type clearFlashMsg struct{}
 
+// customStreamMsg liefert das Ergebnis der Custom-URL-Auflösung (Playlists
+// werden async per HTTP zur eigentlichen Stream-URL aufgelöst).
+type customStreamMsg struct {
+	st  config.Station
+	err error
+}
+
+// resolveCustomCmd löst eine benutzerdefinierte Stream-/Playlist-URL auf.
+func resolveCustomCmd(raw string) tea.Cmd {
+	return func() tea.Msg {
+		st := customStation(raw) // Name aus der Original-URL (host/pfad)
+		streamURL, err := resolveStreamURL(raw)
+		if err != nil {
+			return customStreamMsg{err: err}
+		}
+		st.StreamURL = streamURL
+		return customStreamMsg{st: st}
+	}
+}
+
 // animMsg treibt die Equalizer-Animation an.
 type animMsg time.Time
 
@@ -165,7 +185,7 @@ func (m *radioModule) Init() tea.Cmd {
 
 	// 1. Text Input konfigurieren (Struktur; Farben via restyle)
 	ti := textinput.New()
-	ti.Placeholder = "techno, rock, jazz… or leave empty"
+	ti.Placeholder = "techno, rock, jazz… or paste a stream URL"
 	ti.Prompt = "› "
 	ti.Focus()
 	ti.CharLimit = 156
@@ -362,6 +382,16 @@ func (m *radioModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 		m.state = stateList
 		return m, nil
 
+	case customStreamMsg:
+		m.searching = false
+		if msg.err != nil {
+			return m, m.setFlash("✗ " + msg.err.Error())
+		}
+		st := msg.st
+		m.currentURL = st.StreamURL
+		m.lastStation = &st
+		return m, tea.Batch(m.startPlay(), m.persistCmd())
+
 	case clearFlashMsg:
 		if time.Now().After(m.flashUntil) {
 			m.flash = ""
@@ -451,6 +481,12 @@ func (m *radioModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 				// Zurück zum Dashboard-Startmenü.
 				return m, core.GoToLauncher
 			case "enter":
+				// Direkte Stream-URL? -> auflösen (Playlists) und abspielen.
+				// Async, weil .pls/.m3u erst per HTTP geholt werden müssen.
+				if isStreamURL(m.textInput.Value()) {
+					m.searching = true
+					return m, tea.Batch(resolveCustomCmd(m.textInput.Value()), m.spinner.Tick)
+				}
 				m.searching = true
 				return m, tea.Batch(m.searchCmd(m.textInput.Value()), m.spinner.Tick)
 			case "ctrl+f":
@@ -621,12 +657,12 @@ func (m *radioModule) View(width, height int) string {
 		if m.searching {
 			card = ui.CardStyle.Render(m.spinner.View() + " " + ui.LabelStyle.Render("searching…"))
 		} else {
-			prompt := ui.LabelStyle.Render("find a station or a mood")
+			prompt := ui.LabelStyle.Render("find a station, a mood, or paste a URL")
 			input := lipgloss.NewStyle().Width(40).Render(m.textInput.View())
 			card = ui.CardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, prompt, "", input))
 		}
 
-		help := ui.HelpStyle.Render("enter: search   ·   ctrl+f: favorites   ·   esc: dashboard")
+		help := ui.HelpStyle.Render("enter: search / play URL   ·   ctrl+f: favorites   ·   esc: dashboard")
 		parts := []string{card, "", help}
 		if m.lastStation != nil {
 			resume := ui.DimStyle.Render("ctrl+r: resume ") + ui.LabelStyle.Render(m.lastStation.Name)
@@ -762,6 +798,7 @@ func (m *radioModule) helpView() string {
 	sections := []ui.HelpSection{
 		{Title: "search", Rows: [][2]string{
 			{"enter", "search (empty = top DE)"},
+			{"enter", "paste http(s):// URL = play custom stream"},
 			{"ctrl+f", "show favorites"},
 			{"ctrl+r", "resume last station"},
 			{"esc", "back to dashboard"},
