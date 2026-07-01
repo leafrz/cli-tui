@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "immocare",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "C:/Users/tobia/Documents/hausmeisterwebsite/hausmeisterwebsite", "run", "dev"],
+      "port": 5173
+    }
+  ]
+}
