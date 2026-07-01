@@ -54,6 +54,31 @@ var themes = []themeDef{
 		cream: "#e6e6e6", mauve: "#c0c0c0", purple: "#6f6f6f", teal: "#9a9a9a",
 		peach: "#cfcfcf", dim: "#808080", faint: "#353535", errorC: "#b86b6b", good: "#8f9f7f",
 	},
+	{
+		name:  "dracula",
+		cream: "#f8f8f2", mauve: "#bd93f9", purple: "#6272a4", teal: "#8be9fd",
+		peach: "#ffb86c", dim: "#6272a4", faint: "#44475a", errorC: "#ff5555", good: "#50fa7b",
+	},
+	{
+		name:  "gruvbox",
+		cream: "#ebdbb2", mauve: "#d3869b", purple: "#665c54", teal: "#8ec07c",
+		peach: "#fe8019", dim: "#928374", faint: "#3c3836", errorC: "#fb4934", good: "#b8bb26",
+	},
+	{
+		name:  "tokyonight",
+		cream: "#c0caf5", mauve: "#bb9af7", purple: "#565f89", teal: "#7dcfff",
+		peach: "#ff9e64", dim: "#565f89", faint: "#292e42", errorC: "#f7768e", good: "#9ece6a",
+	},
+	{
+		name:  "solarized",
+		cream: "#93a1a1", mauve: "#6c71c4", purple: "#586e75", teal: "#2aa198",
+		peach: "#cb4b16", dim: "#657b83", faint: "#073642", errorC: "#dc322f", good: "#859900",
+	},
+	{
+		name:  "crt",
+		cream: "#c8ffc8", mauve: "#66ff66", purple: "#2a7a2a", teal: "#55ff88",
+		peach: "#99ff99", dim: "#3f7f3f", faint: "#123512", errorC: "#ff6b6b", good: "#66ff66",
+	},
 }
 
 // ThemeNames liefert alle Theme-Namen in Reihenfolge.

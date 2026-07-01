@@ -1,6 +1,6 @@
 # Build artifacts
 *.exe
-dashboard
+/dashboard
 
 # Go
 /vendor/
