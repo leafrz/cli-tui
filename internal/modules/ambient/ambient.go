@@ -1,6 +1,8 @@
 package ambient
 
 import (
+	"fmt"
+	"math"
 	"math/rand"
 	"strings"
 	"time"
@@ -104,6 +106,10 @@ type ambientModule struct {
 	scenes     []scene
 	specLevels []float64 // Mini-Spektrum (wenn Radio läuft)
 	cfg        config.AmbientConfig
+
+	// Kiosk-Modus (--autostart): der große Enter-Buzzer steppt die Lautstärke.
+	kiosk         bool
+	volFlashUntil time.Time // solange in der Zukunft: großes Volume-Overlay zeigen
 
 	// weather
 	weatherCfg      config.WeatherConfig
@@ -237,9 +243,10 @@ func (m *ambientModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 
 	case core.AutostartMsg:
-		// Autostart: Szenen-Rotation einschalten.
+		// Autostart: Szenen-Rotation einschalten + Kiosk-Modus (Enter-Buzzer).
 		m.autoRotate = true
 		m.rotateCounter = 0
+		m.kiosk = true
 		return m, nil
 
 	case core.FocusMsg:
@@ -330,6 +337,13 @@ func (m *ambientModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 			return m, nil
 		}
 		switch k {
+		case "enter":
+			// Kiosk: der große Enter-Buzzer ist die einzige Taste -> Lautstärke
+			// zyklisch steppen (0 → 20 → … → 100 → 0). Sonst bleibt Enter frei.
+			if m.kiosk {
+				m.cycleVolume()
+				return m, nil
+			}
 		case "esc", "q", "backspace":
 			m.ticking = false
 			return m, core.GoToLauncher
@@ -364,6 +378,55 @@ func (m *ambientModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 	return m, nil
 }
 
+// volStep ist die Schrittweite des Kiosk-Buzzers (20 %).
+const volStep = 0.2
+
+// cycleVolume steppt die Lautstärke um volStep nach oben; über 100 % geht es
+// zurück auf 0. Krumme Zwischenwerte (z. B. 55 %) rasten auf den nächsten
+// Schritt ein. Mute wird dabei aufgehoben.
+func (m *ambientModule) cycleVolume() {
+	if m.player == nil {
+		return
+	}
+	_, _, vol := m.player.GetStatus()
+	next := (math.Floor(vol/volStep+1e-6) + 1) * volStep
+	if next > 1.0+1e-6 {
+		next = 0
+	}
+	if m.player.IsMuted() {
+		m.player.ToggleMute()
+	}
+	m.player.SetVolume(next)
+	m.volFlashUntil = time.Now().Add(2500 * time.Millisecond)
+}
+
+// drawVolumeOverlay zeichnet die große Kiosk-Lautstärkeanzeige (raumtauglich).
+func (m *ambientModule) drawVolumeOverlay(g *grid) {
+	_, _, vol := m.player.GetStatus()
+
+	barW := m.width / 2
+	if barW > 48 {
+		barW = 48
+	}
+	if barW < 10 {
+		barW = 10
+	}
+	filled := int(vol*float64(barW) + 0.5)
+
+	label := fmt.Sprintf("volume %3.0f%%", vol*100)
+	y := m.height * 3 / 4
+	g.stampText(centerX(m.width, label), y-1, label, ui.ColPeach)
+
+	x := (m.width - barW) / 2
+	for i := 0; i < barW; i++ {
+		ch, col := '░', ui.ColFaint
+		if i < filled {
+			ch, col = '█', ui.ColPeach
+		}
+		g.set(x+i, y, ch, col)
+	}
+}
+
 func (m *ambientModule) advance() {
 	m.scenes[m.style].advance(m.width, m.height, m.rng)
 }
@@ -384,6 +447,9 @@ func (m *ambientModule) View(width, height int) string {
 	m.scenes[m.style].draw(g, m.rng)
 	if m.showClock {
 		m.drawClock(g)
+	}
+	if m.player != nil && time.Now().Before(m.volFlashUntil) {
+		m.drawVolumeOverlay(g)
 	}
 
 	scene := m.scenes[m.style].name()
