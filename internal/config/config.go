@@ -18,6 +18,7 @@ type State struct {
 	Weather     WeatherConfig `json:"weather"`
 	Ambient     AmbientConfig `json:"ambient"`
 	Todos       []TodoItem    `json:"todos"`
+	Hotfixes    int           `json:"hotfix_count"` // Kiosk: Meme-Hotfix-Counter
 }
 
 // AmbientConfig merkt sich Ambient-Vorlieben. Bools sind so gewählt, dass der

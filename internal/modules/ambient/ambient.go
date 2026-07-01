@@ -2,8 +2,8 @@ package ambient
 
 import (
 	"fmt"
-	"math"
 	"math/rand"
+	"strconv"
 	"strings"
 	"time"
 
@@ -107,9 +107,21 @@ type ambientModule struct {
 	specLevels []float64 // Mini-Spektrum (wenn Radio läuft)
 	cfg        config.AmbientConfig
 
-	// Kiosk-Modus (--autostart): der große Enter-Buzzer steppt die Lautstärke.
+	// Kiosk-Modus (--autostart): der große Enter-Buzzer ist die einzige Taste.
+	// 1x = Volume up, 2x = Volume down, lang (Key-Repeat) = Hotfix.
 	kiosk         bool
 	volFlashUntil time.Time // solange in der Zukunft: großes Volume-Overlay zeigen
+
+	// Enter-Gesten-Erkennung (Buzzer sendet nur Key-Down + Key-Repeat).
+	enterLast  time.Time // Zeitpunkt des letzten Enter
+	enterCount int       // Drücke im aktuellen Fenster
+	rapidRun   int       // aufeinanderfolgende Repeat-Events (<150ms Abstand)
+	longFired  bool      // Hotfix in diesem Burst schon ausgelöst
+
+	// Hotfix-Counter (Meme: jede Woche ein Hotfix).
+	hotfixCount      int
+	hotfixFlashUntil time.Time
+	editingHotfix    bool
 
 	// weather
 	weatherCfg      config.WeatherConfig
@@ -152,6 +164,7 @@ func New(p *audio.Player) *ambientModule {
 		}
 	}
 	m.setDvdLogo(st.Header.Text)
+	m.hotfixCount = st.Hotfixes
 	return m
 }
 
@@ -300,12 +313,36 @@ func (m *ambientModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 			}
 		}
 		m.setDvdLogo(st.Header.Text)
+		m.hotfixCount = st.Hotfixes
 		m.weatherLine = ""
 		m.weatherAt = time.Time{} // beim nächsten Tick/Focus neu holen (oder aus)
 		return m, nil
 
+	case enterResolveMsg:
+		m.resolveEnter(time.Now())
+		return m, nil
+
 	case tea.KeyMsg:
 		k := msg.String()
+
+		// Hotfix-Counter-Editor hat Vorrang.
+		if m.editingHotfix {
+			switch k {
+			case "enter":
+				if n, err := strconv.Atoi(strings.TrimSpace(m.editInput.Value())); err == nil && n >= 0 {
+					m.hotfixCount = n
+					m.editingHotfix = false
+					return m, m.persistHotfixCmd()
+				}
+				return m, nil // ungültige Eingabe -> Editor bleibt offen
+			case "esc":
+				m.editingHotfix = false
+				return m, nil
+			}
+			var cmd tea.Cmd
+			m.editInput, cmd = m.editInput.Update(msg)
+			return m, cmd
+		}
 
 		// Standort-Editor hat Vorrang.
 		if m.editing {
@@ -338,11 +375,19 @@ func (m *ambientModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 		}
 		switch k {
 		case "enter":
-			// Kiosk: der große Enter-Buzzer ist die einzige Taste -> Lautstärke
-			// zyklisch steppen (0 → 20 → … → 100 → 0). Sonst bleibt Enter frei.
+			// Kiosk: der große Enter-Buzzer ist die einzige Taste.
+			// 1x = lauter, 2x = leiser, lang (Key-Repeat) = Hotfix.
 			if m.kiosk {
-				m.cycleVolume()
-				return m, nil
+				return m, m.handleEnter(time.Now())
+			}
+		case "e":
+			// Kiosk: Hotfix-Counter editieren (mit Tastatur am Gerät).
+			if m.kiosk {
+				m.editingHotfix = true
+				m.editInput.SetValue(fmt.Sprintf("%d", m.hotfixCount))
+				m.editInput.CursorEnd()
+				m.editInput.Focus()
+				return m, textinput.Blink
 			}
 		case "esc", "q", "backspace":
 			m.ticking = false
@@ -378,26 +423,131 @@ func (m *ambientModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 	return m, nil
 }
 
-// volStep ist die Schrittweite des Kiosk-Buzzers (20 %).
-const volStep = 0.2
+// --- Kiosk: Enter-Buzzer-Gesten ---------------------------------------------
+// Terminals melden kein Key-Up. Ein gehaltener Buzzer erzeugt Key-Repeat:
+// erst ~500ms Pause, dann Events im ~30ms-Takt. Darauf baut die Erkennung:
+//
+//	Repeat-Burst (>=3 Events mit <150ms Abstand)  -> langer Druck  -> Hotfix
+//	sonst: Drücke zählen, nach 650ms Ruhe auflösen -> 1x lauter, 2x leiser
+//
+// resolveAfter MUSS größer sein als die OS-Repeat-Verzögerung, sonst feuert
+// "lauter" vor jedem Hotfix.
+const (
+	rapidGap     = 150 * time.Millisecond
+	resolveAfter = 650 * time.Millisecond
+	volStep      = 0.1
+)
 
-// cycleVolume steppt die Lautstärke um volStep nach oben; über 100 % geht es
-// zurück auf 0. Krumme Zwischenwerte (z. B. 55 %) rasten auf den nächsten
-// Schritt ein. Mute wird dabei aufgehoben.
-func (m *ambientModule) cycleVolume() {
-	if m.player == nil {
+type enterResolveMsg time.Time
+
+// handleEnter verarbeitet ein Enter-Event des Buzzers (testbar über now).
+func (m *ambientModule) handleEnter(now time.Time) tea.Cmd {
+	gap := now.Sub(m.enterLast)
+	m.enterLast = now
+
+	if gap < rapidGap {
+		m.rapidRun++
+	} else {
+		m.rapidRun = 0
+		if gap > resolveAfter {
+			m.longFired = false // neuer Burst
+		}
+	}
+
+	// Key-Repeat erkannt = langer Druck -> Hotfix (einmal pro Burst).
+	if m.rapidRun >= 3 {
+		if m.longFired {
+			return nil
+		}
+		m.longFired = true
+		m.enterCount = 0
+		return m.hotfixCmd()
+	}
+	if m.longFired {
+		return nil // Ausläufer des Repeat-Bursts schlucken
+	}
+
+	m.enterCount++
+	return tea.Tick(resolveAfter+50*time.Millisecond,
+		func(t time.Time) tea.Msg { return enterResolveMsg(t) })
+}
+
+// resolveEnter löst das Drück-Fenster auf, sobald lange genug Ruhe war.
+func (m *ambientModule) resolveEnter(now time.Time) {
+	if now.Sub(m.enterLast) < resolveAfter {
+		return // es kam noch was; ein späterer Tick übernimmt
+	}
+	n := m.enterCount
+	m.enterCount = 0
+	if m.longFired {
+		m.longFired = false // Burst beendet, nichts weiter tun
 		return
 	}
-	_, _, vol := m.player.GetStatus()
-	next := (math.Floor(vol/volStep+1e-6) + 1) * volStep
-	if next > 1.0+1e-6 {
-		next = 0
+	switch {
+	case n == 1:
+		m.stepVolume(+1)
+	case n >= 2:
+		m.stepVolume(-1)
+	}
+}
+
+// stepVolume ändert die Lautstärke um volStep in dir (+1/-1), hebt Mute auf.
+func (m *ambientModule) stepVolume(dir float64) {
+	if m.player == nil {
+		return
 	}
 	if m.player.IsMuted() {
 		m.player.ToggleMute()
 	}
-	m.player.SetVolume(next)
+	m.player.AdjustVolume(volStep * dir)
 	m.volFlashUntil = time.Now().Add(2500 * time.Millisecond)
+}
+
+// hotfixCmd erhöht den Hotfix-Counter, persistiert ihn und spielt einen
+// zufälligen Meme-Sound aus dem sounds/-Ordner neben dem Binary.
+func (m *ambientModule) hotfixCmd() tea.Cmd {
+	m.hotfixCount++
+	m.hotfixFlashUntil = time.Now().Add(3 * time.Second)
+	return tea.Batch(
+		m.persistHotfixCmd(),
+		func() tea.Msg { _ = audio.PlayRandomSFX("sounds"); return nil },
+	)
+}
+
+func (m *ambientModule) persistHotfixCmd() tea.Cmd {
+	n := m.hotfixCount
+	return func() tea.Msg {
+		_ = config.Update(func(s *config.State) { s.Hotfixes = n })
+		return nil
+	}
+}
+
+// drawHotfixBox zeichnet den permanenten Hotfix-Counter oben rechts (Kiosk).
+func (m *ambientModule) drawHotfixBox(g *grid) {
+	label := fmt.Sprintf(" ⚑ hotfix #%d ", m.hotfixCount)
+	w := len([]rune(label))
+	x := g.w - w - 4
+	if x < 0 {
+		x = 0
+	}
+	g.stampText(x, 0, "╭"+strings.Repeat("─", w)+"╮", ui.ColPurple)
+	g.stampText(x, 1, "│", ui.ColPurple)
+	g.stampText(x+1, 1, label, ui.ColPeach)
+	g.stampText(x+1+w, 1, "│", ui.ColPurple)
+	g.stampText(x, 2, "╰"+strings.Repeat("─", w)+"╯", ui.ColPurple)
+}
+
+// drawHotfixFlash zeigt nach einem Long-Press kurz ein großes Banner.
+func (m *ambientModule) drawHotfixFlash(g *grid) {
+	msg := fmt.Sprintf("★  HOTFIX #%d SHIPPED  ★", m.hotfixCount)
+	w := len([]rune(msg))
+	y := g.h / 4
+	x := centerX(g.w, msg)
+	g.stampText(x-2, y-1, "╔"+strings.Repeat("═", w+2)+"╗", ui.ColError)
+	g.stampText(x-2, y, "║ ", ui.ColError)
+	g.stampText(x, y, msg, ui.ColPeach)
+	g.stampText(x+w, y, " ║", ui.ColError)
+	g.stampText(x-2, y+1, "╚"+strings.Repeat("═", w+2)+"╝", ui.ColError)
 }
 
 // drawVolumeOverlay zeichnet die große Kiosk-Lautstärkeanzeige (raumtauglich).
@@ -433,6 +583,9 @@ func (m *ambientModule) advance() {
 
 func (m *ambientModule) View(width, height int) string {
 	m.width, m.height = width, height
+	if m.editingHotfix {
+		return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, m.hotfixEditorView())
+	}
 	if m.editing {
 		return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, m.locationEditorView())
 	}
@@ -451,6 +604,12 @@ func (m *ambientModule) View(width, height int) string {
 	if m.player != nil && time.Now().Before(m.volFlashUntil) {
 		m.drawVolumeOverlay(g)
 	}
+	if m.kiosk {
+		m.drawHotfixBox(g)
+		if time.Now().Before(m.hotfixFlashUntil) {
+			m.drawHotfixFlash(g)
+		}
+	}
 
 	scene := m.scenes[m.style].name()
 	if m.autoRotate {
@@ -461,6 +620,14 @@ func (m *ambientModule) View(width, height int) string {
 	g.stampText(centerX(width, hint), height-1, hint, ui.ColDim)
 
 	return g.render()
+}
+
+func (m *ambientModule) hotfixEditorView() string {
+	prompt := ui.LabelStyle.Render("hotfix counter")
+	input := lipgloss.NewStyle().Width(38).Render(m.editInput.View())
+	hint := ui.HelpStyle.Render("enter: save   ·   esc: cancel")
+	card := ui.CardStyle.Render(lipgloss.JoinVertical(lipgloss.Left, prompt, "", input))
+	return lipgloss.JoinVertical(lipgloss.Center, card, "", hint)
 }
 
 func (m *ambientModule) locationEditorView() string {
@@ -607,6 +774,14 @@ func (m *ambientModule) helpView() string {
 			{"esc / q", "back to dashboard"},
 			{"?", "toggle this help"},
 		}},
+	}
+	if m.kiosk {
+		sections = append(sections, ui.HelpSection{Title: "kiosk buzzer", Rows: [][2]string{
+			{"enter 1x", "volume up"},
+			{"enter 2x", "volume down"},
+			{"enter hold", "hotfix +1 (plays a sound)"},
+			{"e", "edit hotfix counter"},
+		}})
 	}
 	return ui.HelpOverlay("ambient · help", sections,
 		"auto-screensaver after ~2 min idle · any key wakes")

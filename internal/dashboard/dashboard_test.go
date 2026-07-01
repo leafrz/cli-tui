@@ -10,7 +10,7 @@ import (
 // TestHeaderTickAdvances prüft, dass der Header-Tick den Frame erhöht und sich
 // neu armiert (die Basis-Animationsschleife).
 func TestHeaderTickAdvances(t *testing.T) {
-	r := NewRoot()
+	r := NewRoot(false)
 	r.Init() // richtet die Module ein (Listen etc.), wie Bubble Tea es tut
 	r.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 
@@ -28,7 +28,7 @@ func TestHeaderTickAdvances(t *testing.T) {
 // TestModuleFocusStartsTicker öffnet ein Modul und prüft, dass der Focus den
 // Ticker startet (das Modul gibt ein nicht-nil Tick-Cmd zurück).
 func TestModuleFocusStartsTicker(t *testing.T) {
-	r := NewRoot()
+	r := NewRoot(false)
 	r.Init() // richtet die Module ein (Listen etc.), wie Bubble Tea es tut
 	r.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 
