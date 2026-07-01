@@ -8,3 +8,6 @@
 # Debug
 radio_debug.log
 err.log
+
+# Kiosk meme sounds (local only)
+/sounds/
