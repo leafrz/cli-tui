@@ -120,6 +120,7 @@ type ambientModule struct {
 
 	// Hotfix-Counter (Meme: jede Woche ein Hotfix).
 	hotfixCount      int
+	hotfixLog        []time.Time // Zeitstempel je Hotfix (für Streak/days-since)
 	hotfixFlashUntil time.Time
 	editingHotfix    bool
 
@@ -165,6 +166,7 @@ func New(p *audio.Player) *ambientModule {
 	}
 	m.setDvdLogo(st.Header.Text)
 	m.hotfixCount = st.Hotfixes
+	m.hotfixLog = st.HotfixLog
 	return m
 }
 
@@ -314,6 +316,7 @@ func (m *ambientModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 		}
 		m.setDvdLogo(st.Header.Text)
 		m.hotfixCount = st.Hotfixes
+		m.hotfixLog = st.HotfixLog
 		m.weatherLine = ""
 		m.weatherAt = time.Time{} // beim nächsten Tick/Focus neu holen (oder aus)
 		return m, nil
@@ -507,6 +510,7 @@ func (m *ambientModule) stepVolume(dir float64) {
 // zufälligen Meme-Sound aus dem sounds/-Ordner neben dem Binary.
 func (m *ambientModule) hotfixCmd() tea.Cmd {
 	m.hotfixCount++
+	m.hotfixLog = append(m.hotfixLog, time.Now())
 	m.hotfixFlashUntil = time.Now().Add(3 * time.Second)
 	return tea.Batch(
 		m.persistHotfixCmd(),
@@ -516,30 +520,58 @@ func (m *ambientModule) hotfixCmd() tea.Cmd {
 
 func (m *ambientModule) persistHotfixCmd() tea.Cmd {
 	n := m.hotfixCount
+	log := append([]time.Time(nil), m.hotfixLog...)
 	return func() tea.Msg {
-		_ = config.Update(func(s *config.State) { s.Hotfixes = n })
+		_ = config.Update(func(s *config.State) { s.Hotfixes = n; s.HotfixLog = log })
 		return nil
 	}
 }
 
-// drawHotfixBox zeichnet den permanenten Hotfix-Counter oben rechts (Kiosk).
+// drawHotfixBox zeichnet den permanenten Hotfix-Counter mit Streak und
+// "days since last" (Fabrikschild-Stil) oben rechts (Kiosk).
 func (m *ambientModule) drawHotfixBox(g *grid) {
-	label := fmt.Sprintf(" ⚑ hotfix #%d ", m.hotfixCount)
-	w := len([]rune(label))
+	now := time.Now()
+	lines := hotfixStatusLines(m.hotfixCount, m.hotfixLog, now)
+
+	w := 0
+	for _, l := range lines {
+		if n := len([]rune(l)); n > w {
+			w = n
+		}
+	}
+	w += 2 // Innen-Padding
 	x := g.w - w - 4
 	if x < 0 {
 		x = 0
 	}
+
 	g.stampText(x, 0, "╭"+strings.Repeat("─", w)+"╮", ui.ColPurple)
-	g.stampText(x, 1, "│", ui.ColPurple)
-	g.stampText(x+1, 1, label, ui.ColPeach)
-	g.stampText(x+1+w, 1, "│", ui.ColPurple)
-	g.stampText(x, 2, "╰"+strings.Repeat("─", w)+"╯", ui.ColPurple)
+	for i, l := range lines {
+		col := ui.ColDim
+		switch {
+		case i == 0:
+			col = ui.ColPeach // Counter
+		case strings.Contains(l, "broken"):
+			col = ui.ColError
+		case strings.HasPrefix(l, "streak"):
+			col = ui.ColGood
+		case strings.HasPrefix(l, "0 days"):
+			col = ui.ColError // frisch geshippt, Schild steht auf 0
+		}
+		g.stampText(x, 1+i, "│", ui.ColPurple)
+		g.stampText(x+2, 1+i, l, col)
+		g.stampText(x+w+1, 1+i, "│", ui.ColPurple)
+	}
+	g.stampText(x, 1+len(lines), "╰"+strings.Repeat("─", w)+"╯", ui.ColPurple)
 }
 
 // drawHotfixFlash zeigt nach einem Long-Press kurz ein großes Banner.
 func (m *ambientModule) drawHotfixFlash(g *grid) {
 	msg := fmt.Sprintf("★  HOTFIX #%d SHIPPED  ★", m.hotfixCount)
+	sub := ""
+	if s := hotfixStreakWeeks(m.hotfixLog, time.Now()); s > 1 {
+		sub = fmt.Sprintf("%d weeks in a row baby", s)
+	}
 	w := len([]rune(msg))
 	y := g.h / 4
 	x := centerX(g.w, msg)
@@ -548,6 +580,9 @@ func (m *ambientModule) drawHotfixFlash(g *grid) {
 	g.stampText(x, y, msg, ui.ColPeach)
 	g.stampText(x+w, y, " ║", ui.ColError)
 	g.stampText(x-2, y+1, "╚"+strings.Repeat("═", w+2)+"╝", ui.ColError)
+	if sub != "" {
+		g.stampText(centerX(g.w, sub), y+2, sub, ui.ColGood)
+	}
 }
 
 // drawVolumeOverlay zeichnet die große Kiosk-Lautstärkeanzeige (raumtauglich).
