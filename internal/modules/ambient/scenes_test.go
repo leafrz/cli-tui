@@ -31,7 +31,7 @@ func TestScenesSmoke(t *testing.T) {
 		}
 	}
 
-	if len(seen) < 17 {
-		t.Fatalf("erwartete >=17 Scenes, bekam %d", len(seen))
+	if len(seen) < 21 {
+		t.Fatalf("erwartete >=21 Scenes, bekam %d", len(seen))
 	}
 }
