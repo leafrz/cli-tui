@@ -28,9 +28,10 @@ modules. The architecture is set up so more can drop in.
 - **System monitor** — live CPU (overall + per-core), memory, disk, and
   network throughput with gauges and sparklines
 - **Todo** — a simple persisted checklist (add / toggle / delete / clear done)
-- **Ambient** — a "leave it open" screen: 13 animated scenes (starfield,
+- **Ambient** — a "leave it open" screen: 17 animated scenes (starfield,
   matrix, rain, snow, plasma, life, fireworks, dvd, waves, fire, ripples,
-  spiral, blank) with optional auto-rotate, a big block clock, live
+  spiral, aurora, lava, lissajous, swarm, blank) with optional auto-rotate,
+  a big block clock, live
   **weather**, and a now-playing line + mini-spectrum when the radio is
   going. Jump here from the radio with `a` (music keeps playing), and the
   whole app auto-screensavers into it after a couple minutes idle.
@@ -38,8 +39,9 @@ modules. The architecture is set up so more can drop in.
   context-aware (scrolls the now-playing track)
 - **Settings page** — a dashboard module to configure theme, header, weather
   (incl. turning it off), and the screensaver, all live + persisted
-- **Themes** — switchable color palettes (lofi / midnight / sepia / forest /
-  rosepine / nord / noir), applied live and persisted
+- **Themes** — 12 switchable color palettes (lofi / midnight / sepia / forest /
+  rosepine / nord / noir / dracula / gruvbox / tokyonight / solarized / crt),
+  applied live and persisted
 - **Global now-playing bar** — a persistent bottom bar in every module shows
   the current track + station and volume, with media keys (pause/volume) that
   work from anywhere
@@ -80,7 +82,7 @@ go build -o lofi-radio ./cmd/lofi-radio
 | `enter` | Open module |
 | `ctrl+t` | Cycle header mode (static → rotate → marquee → context) |
 | `ctrl+e` | Edit header text |
-| `ctrl+p` | Cycle theme (7 palettes: lofi, midnight, sepia, forest, rosepine, nord, noir) |
+| `ctrl+p` | Cycle theme (12 palettes: lofi, midnight, sepia, forest, rosepine, nord, noir, dracula, gruvbox, tokyonight, solarized, crt) |
 | `ctrl+space` | Play / pause the radio (from anywhere) |
 | `ctrl+↑` / `ctrl+↓` | Volume up / down (from anywhere) |
 | `?` | Global help (in launcher) |
@@ -225,7 +227,7 @@ Status). Adding one is roughly:
 
 - [x] System monitor module
 - [x] Audio-reactive visualizer (in the radio player, `v` for full-screen)
-- [x] Ambient module (13 scenes + clock + weather + now-playing)
+- [x] Ambient module (17 scenes + clock + weather + now-playing)
 - [ ] More modules (it's a dashboard, after all)
 
 ---

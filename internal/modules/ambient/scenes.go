@@ -30,6 +30,10 @@ func buildScenes() []scene {
 		&fireScene{},
 		&ripplesScene{},
 		&spiralScene{},
+		&auroraScene{},
+		&lavaScene{},
+		&lissajousScene{},
+		&swarmScene{},
 		&blankScene{},
 	}
 }
@@ -619,6 +623,206 @@ func (s *spiralScene) draw(g *grid, rng *rand.Rand) {
 			y := int(cy + r*math.Sin(theta)*0.5)
 			g.set(x, y, '*', gradColor(t/maxT))
 		}
+	}
+}
+
+// --- aurora ----------------------------------------------------------------
+// Wavernde vertikale Lichtvorhänge (Nordlicht), Farbe nach Höhe.
+
+type auroraScene struct{ t float64 }
+
+func (s *auroraScene) name() string                     { return "aurora" }
+func (s *auroraScene) advance(w, h int, rng *rand.Rand) { s.t += 0.05 }
+
+func (s *auroraScene) draw(g *grid, rng *rand.Rand) {
+	top := g.h / 6
+	for x := 0; x < g.w; x++ {
+		fx := float64(x)
+		inten := (math.Sin(fx*0.15+s.t)+math.Sin(fx*0.06-s.t*0.7))/2 +
+			0.35*math.Sin(fx*0.28+s.t*1.6)
+		if inten <= 0 {
+			continue
+		}
+		height := int(inten * float64(g.h) * 0.75)
+		for y := top; y < top+height && y < g.h; y++ {
+			f := 1 - float64(y-top)/float64(height+1) // hell oben -> dunkel unten
+			var col lipgloss.Color
+			switch {
+			case f < 0.3:
+				col = ui.ColFaint
+			case f < 0.55:
+				col = ui.ColTeal
+			case f < 0.8:
+				col = ui.ColGood
+			default:
+				col = ui.ColCream
+			}
+			g.set(x, y, rampChar(0.3+f*0.7), col)
+		}
+	}
+}
+
+// --- lava lamp (metaballs) -------------------------------------------------
+// Weiche, verschmelzende Blobs über ein Schwellenwertfeld.
+
+type blob struct{ x, y, vx, vy, r float64 }
+
+type lavaScene struct {
+	w, h  int
+	blobs []blob
+}
+
+func (s *lavaScene) name() string { return "lava" }
+
+func (s *lavaScene) ensure(w, h int, rng *rand.Rand) {
+	if w == s.w && h == s.h && s.blobs != nil {
+		return
+	}
+	s.w, s.h = w, h
+	n := 4 + rng.Intn(2)
+	s.blobs = make([]blob, n)
+	for i := range s.blobs {
+		s.blobs[i] = blob{
+			x:  rng.Float64() * float64(w),
+			y:  rng.Float64() * float64(h),
+			vx: (rng.Float64()*2 - 1) * 0.5,
+			vy: (rng.Float64()*2 - 1) * 0.3,
+			r:  float64(h)/4 + rng.Float64()*float64(h)/6,
+		}
+	}
+}
+
+func (s *lavaScene) advance(w, h int, rng *rand.Rand) {
+	s.ensure(w, h, rng)
+	for i := range s.blobs {
+		b := &s.blobs[i]
+		b.x += b.vx
+		b.y += b.vy
+		if b.x < 0 || b.x >= float64(w) {
+			b.vx = -b.vx
+		}
+		if b.y < 0 || b.y >= float64(h) {
+			b.vy = -b.vy
+		}
+	}
+}
+
+func (s *lavaScene) draw(g *grid, rng *rand.Rand) {
+	s.ensure(g.w, g.h, rng)
+	for y := 0; y < g.h; y++ {
+		for x := 0; x < g.w; x++ {
+			var v float64
+			for _, b := range s.blobs {
+				dx := float64(x) - b.x
+				dy := (float64(y) - b.y) * 2 // Zellen sind ~2:1 -> y strecken
+				v += (b.r * b.r) / (dx*dx + dy*dy + 1)
+			}
+			if v < 0.7 {
+				continue
+			}
+			n := math.Min(1, (v-0.7)/1.3)
+			g.set(x, y, rampChar(n), gradColor(n))
+		}
+	}
+}
+
+// --- lissajous -------------------------------------------------------------
+// Elegante parametrische Kurve, die langsam ihre Form ändert.
+
+type lissajousScene struct{ t float64 }
+
+func (s *lissajousScene) name() string                     { return "lissajous" }
+func (s *lissajousScene) advance(w, h int, rng *rand.Rand) { s.t += 0.04 }
+
+func (s *lissajousScene) draw(g *grid, rng *rand.Rand) {
+	cx, cy := float64(g.w)/2, float64(g.h)/2
+	ax, ay := cx-2, cy-1
+	a := 3.0 + math.Sin(s.t*0.13)
+	b := 2.0 + math.Cos(s.t*0.09)
+	for u := 0.0; u < 2*math.Pi; u += 0.008 {
+		x := int(cx + ax*math.Sin(a*u+s.t))
+		y := int(cy + ay*math.Sin(b*u))
+		g.set(x, y, '•', gradColor(u/(2*math.Pi)))
+	}
+}
+
+// --- swarm (boids) ---------------------------------------------------------
+// Schwarm aus Punkten mit leichtem Flocking, folgt einem wandernden Ziel.
+
+type boid struct{ x, y, vx, vy float64 }
+
+type swarmScene struct {
+	w, h int
+	bs   []boid
+	t    float64
+}
+
+func (s *swarmScene) name() string { return "swarm" }
+
+func (s *swarmScene) ensure(w, h int, rng *rand.Rand) {
+	if w == s.w && h == s.h && s.bs != nil {
+		return
+	}
+	s.w, s.h = w, h
+	n := w * h / 60
+	if n < 20 {
+		n = 20
+	}
+	if n > 60 {
+		n = 60
+	}
+	s.bs = make([]boid, n)
+	for i := range s.bs {
+		s.bs[i] = boid{rng.Float64() * float64(w), rng.Float64() * float64(h),
+			rng.Float64()*2 - 1, rng.Float64()*2 - 1}
+	}
+}
+
+func (s *swarmScene) advance(w, h int, rng *rand.Rand) {
+	s.ensure(w, h, rng)
+	s.t += 0.02
+	// Wanderndes Ziel (Lissajous-Pfad).
+	tx := float64(w)/2 + float64(w)/3*math.Sin(s.t)
+	ty := float64(h)/2 + float64(h)/3*math.Sin(s.t*1.3)
+	for i := range s.bs {
+		b := &s.bs[i]
+		// Kohäsion zum Ziel.
+		b.vx += (tx - b.x) * 0.002
+		b.vy += (ty - b.y) * 0.002
+		// Separation von nahen Nachbarn.
+		for j := range s.bs {
+			if j == i {
+				continue
+			}
+			dx, dy := b.x-s.bs[j].x, b.y-s.bs[j].y
+			d2 := dx*dx + dy*dy
+			if d2 > 0 && d2 < 9 {
+				b.vx += dx / d2 * 0.35
+				b.vy += dy / d2 * 0.35
+			}
+		}
+		// Geschwindigkeit begrenzen.
+		sp := math.Hypot(b.vx, b.vy)
+		if sp > 1.2 {
+			b.vx, b.vy = b.vx/sp*1.2, b.vy/sp*1.2
+		}
+		b.x += b.vx
+		b.y += b.vy
+	}
+}
+
+func (s *swarmScene) draw(g *grid, rng *rand.Rand) {
+	s.ensure(g.w, g.h, rng)
+	for _, b := range s.bs {
+		sp := math.Hypot(b.vx, b.vy)
+		ch, col := '·', ui.ColTeal
+		switch {
+		case sp > 0.9:
+			ch, col = '●', ui.ColPeach
+		case sp > 0.5:
+			ch, col = '•', ui.ColMauve
+		}
+		g.set(int(b.x), int(b.y), ch, col)
 	}
 }
 
