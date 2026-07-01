@@ -453,7 +453,9 @@ func (s *dvdScene) name() string { return "dvd" }
 
 func (s *dvdScene) advance(w, h int, rng *rand.Rand) {
 	s.w, s.h = w, h
-	s.logo = "◆ lofi ◆"
+	if s.logo == "" {
+		s.logo = "◆ radio ◆"
+	}
 	if !s.initd {
 		s.x, s.y = float64(w)/2, float64(h)/2
 		s.vx, s.vy = 0.7, 0.4
@@ -1095,7 +1097,10 @@ func (s *tunnelScene) draw(g *grid, rng *rand.Rand) {
 		if r < 1 {
 			continue
 		}
-		drift := math.Sin(s.t*0.7) * r * 0.25 // Tunnel schlängelt sich leicht
+		// Tunnel krümmt sich vor dem Betrachter: FERNE Ringe (f klein, in der
+		// Mitte) driften seitlich, nahe (große) bleiben zentriert. Drift ∝ r
+		// sah kaputt aus — die äußeren Ringe schwangen wild zur Seite.
+		drift := math.Sin(s.t*0.7) * (1 - f) * float64(g.w) * 0.10
 		col := gradColor(f)
 		step := 0.35 / (r + 1) * 6
 		if step > 0.3 {
