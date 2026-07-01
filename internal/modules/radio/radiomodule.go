@@ -47,6 +47,26 @@ type searchResultMsg struct {
 // clearFlashMsg löscht die transiente Toast-Nachricht.
 type clearFlashMsg struct{}
 
+// customStreamMsg liefert das Ergebnis der Custom-URL-Auflösung (Playlists
+// werden async per HTTP zur eigentlichen Stream-URL aufgelöst).
+type customStreamMsg struct {
+	st  config.Station
+	err error
+}
+
+// resolveCustomCmd löst eine benutzerdefinierte Stream-/Playlist-URL auf.
+func resolveCustomCmd(raw string) tea.Cmd {
+	return func() tea.Msg {
+		st := customStation(raw) // Name aus der Original-URL (host/pfad)
+		streamURL, err := resolveStreamURL(raw)
+		if err != nil {
+			return customStreamMsg{err: err}
+		}
+		st.StreamURL = streamURL
+		return customStreamMsg{st: st}
+	}
+}
+
 // animMsg treibt die Equalizer-Animation an.
 type animMsg time.Time
 
@@ -362,6 +382,16 @@ func (m *radioModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 		m.state = stateList
 		return m, nil
 
+	case customStreamMsg:
+		m.searching = false
+		if msg.err != nil {
+			return m, m.setFlash("✗ " + msg.err.Error())
+		}
+		st := msg.st
+		m.currentURL = st.StreamURL
+		m.lastStation = &st
+		return m, tea.Batch(m.startPlay(), m.persistCmd())
+
 	case clearFlashMsg:
 		if time.Now().After(m.flashUntil) {
 			m.flash = ""
@@ -451,13 +481,11 @@ func (m *radioModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 				// Zurück zum Dashboard-Startmenü.
 				return m, core.GoToLauncher
 			case "enter":
-				// Direkte Stream-URL? -> sofort abspielen statt suchen.
+				// Direkte Stream-URL? -> auflösen (Playlists) und abspielen.
+				// Async, weil .pls/.m3u erst per HTTP geholt werden müssen.
 				if isStreamURL(m.textInput.Value()) {
-					st := customStation(m.textInput.Value())
-					m.currentURL = st.StreamURL
-					ls := st
-					m.lastStation = &ls
-					return m, tea.Batch(m.startPlay(), m.persistCmd())
+					m.searching = true
+					return m, tea.Batch(resolveCustomCmd(m.textInput.Value()), m.spinner.Tick)
 				}
 				m.searching = true
 				return m, tea.Batch(m.searchCmd(m.textInput.Value()), m.spinner.Tick)
