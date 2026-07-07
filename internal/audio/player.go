@@ -4,6 +4,9 @@ package audio
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -201,6 +204,46 @@ func (p *Player) setMetadata(title string) {
 	p.metaMu.Unlock()
 }
 
+// streamHTTPClient baut einen HTTP-Client für Audio-Streams. insecure=true
+// überspringt die TLS-Zertifikatsprüfung (Fallback, siehe doStreamRequest).
+func streamHTTPClient(insecure bool) *http.Client {
+	return &http.Client{
+		Transport: &http.Transport{
+			DialContext:           (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
+			ResponseHeaderTimeout: 5 * time.Second,
+			TLSClientConfig:       &tls.Config{InsecureSkipVerify: insecure},
+		},
+	}
+}
+
+// isCertError erkennt TLS-Zertifikatsfehler (unbekannte CA, kaputte Kette,
+// Hostname-Mismatch). Viele Radio-Server (z.B. laut.fm) liefern unvollständige
+// Zertifikatsketten, die Browser tolerieren, Go aber ablehnt.
+func isCertError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var certErr *tls.CertificateVerificationError
+	var unknownAuth x509.UnknownAuthorityError
+	var hostErr x509.HostnameError
+	return errors.As(err, &certErr) ||
+		errors.As(err, &unknownAuth) ||
+		errors.As(err, &hostErr)
+}
+
+// doStreamRequest führt den Stream-Request aus und versucht bei einem TLS-
+// Zertifikatsfehler EINMAL erneut ohne Verifikation. Das ist für öffentliche
+// Audio-Streams vertretbar (keine sensiblen Daten), damit Sender mit
+// unvollständiger Zertifikatskette trotzdem abspielbar sind.
+func doStreamRequest(req *http.Request) (*http.Response, error) {
+	resp, err := streamHTTPClient(false).Do(req)
+	if err != nil && isCertError(err) {
+		debugf("Play: TLS verify failed, retrying without verification: %v", err)
+		resp, err = streamHTTPClient(true).Do(req.Clone(req.Context()))
+	}
+	return resp, err
+}
+
 func (p *Player) Play(streamURL string) error {
 	// WICHTIG: Während der blockierenden Arbeit (HTTP-Connect + mp3.Decode)
 	// halten wir KEINEN p.mu Lock. Sonst blockiert GetStatus()/GetMetadata()
@@ -235,15 +278,8 @@ func (p *Player) Play(streamURL string) error {
 	// Timeout läuft über den Transport, damit Streaming nicht abgewürgt wird.
 	req = req.WithContext(ctx)
 
-	client := &http.Client{
-		Transport: &http.Transport{
-			DialContext:           (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
-			ResponseHeaderTimeout: 5 * time.Second,
-		},
-	}
-
 	debugf("Play: requesting %s", streamURL)
-	resp, err := client.Do(req)
+	resp, err := doStreamRequest(req)
 	if err != nil {
 		debugf("Play: client.Do error: %v", err)
 		return fmt.Errorf("connection failed (timeout oder ablehnung): %v", err)
