@@ -156,8 +156,7 @@ func SearchStations(query string) []list.Item {
 		apiURL = "https://de1.api.radio-browser.info/json/stations/search?countrycode=DE&order=clickcount&codec=mp3&limit=20"
 	}
 
-	client := http.Client{Timeout: 4 * time.Second}
-	resp, err := client.Get(apiURL)
+	resp, err := fetchWithTLSFallback(apiURL)
 	if err != nil {
 		return []list.Item{config.Station{Name: "API Fehler", Tags: err.Error()}}
 	}
