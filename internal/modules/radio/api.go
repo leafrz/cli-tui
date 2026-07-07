@@ -1,9 +1,13 @@
 package radio
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"path"
@@ -77,17 +81,55 @@ func extractStreamFromPlaylist(body string) string {
 	return ""
 }
 
+// httpClient baut einen HTTP-Client für Playlist-Fetches. insecure=true
+// überspringt die TLS-Zertifikatsprüfung (Fallback, siehe fetchWithTLSFallback).
+func httpClient(insecure bool) *http.Client {
+	return &http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			DialContext:           (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
+			ResponseHeaderTimeout: 5 * time.Second,
+			TLSClientConfig:       &tls.Config{InsecureSkipVerify: insecure},
+		},
+	}
+}
+
+// isCertError erkennt TLS-Zertifikatsfehler (unbekannte CA, kaputte Kette,
+// Hostname-Mismatch). Viele Radio-Server liefern unvollständige Ketten, die
+// Browser tolerieren, Go aber ablehnt.
+func isCertError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var certErr *tls.CertificateVerificationError
+	var unknownAuth x509.UnknownAuthorityError
+	var hostErr x509.HostnameError
+	return errors.As(err, &certErr) ||
+		errors.As(err, &unknownAuth) ||
+		errors.As(err, &hostErr)
+}
+
+// fetchWithTLSFallback holt eine URL und versucht bei einem TLS-Zertifikats-
+// fehler EINMAL erneut ohne Verifikation (öffentliche Playlists, keine
+// sensiblen Daten).
+func fetchWithTLSFallback(rawURL string) (*http.Response, error) {
+	resp, err := httpClient(false).Get(rawURL)
+	if err != nil && isCertError(err) {
+		resp, err = httpClient(true).Get(rawURL)
+	}
+	return resp, err
+}
+
 // resolveStreamURL löst Playlist-URLs zur eigentlichen Stream-URL auf
 // (max. 3 Hops, falls eine Playlist auf die nächste zeigt). Direkte
 // Stream-URLs gehen unverändert durch.
 func resolveStreamURL(raw string) (string, error) {
 	cur := strings.TrimSpace(raw)
-	client := http.Client{Timeout: 5 * time.Second}
 	for hop := 0; hop < 3; hop++ {
 		if !isPlaylistURL(cur) {
 			return cur, nil
 		}
-		resp, err := client.Get(cur)
+		resp, err := fetchWithTLSFallback(cur)
 		if err != nil {
 			return "", fmt.Errorf("playlist fetch: %w", err)
 		}
