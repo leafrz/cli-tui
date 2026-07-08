@@ -30,7 +30,8 @@ type AmbientConfig struct {
 	Clock12   bool   `json:"clock12"`
 	Rotate    bool   `json:"rotate"`
 	IdleOff   bool   `json:"idle_off"`
-	IdleSecs  int    `json:"idle_secs"` // <=0 -> 120
+	IdleSecs  int    `json:"idle_secs"`     // <=0 -> 120
+	Pet       string `json:"pet,omitempty"` // "" = kein Begleiter
 }
 
 // IdleTimeout liefert die Inaktivitätsdauer bis zum Auto-Screensaver (0 = aus).
