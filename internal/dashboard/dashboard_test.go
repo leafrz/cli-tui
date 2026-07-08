@@ -29,7 +29,7 @@ func TestHeaderTickAdvances(t *testing.T) {
 // TestThemeFlashFades: ctrl+p zeigt den Theme-Namen im Header und der Fade
 // zählt über die Flash-Ticks bis auf null herunter.
 func TestThemeFlashFades(t *testing.T) {
-	r := NewRoot()
+	r := NewRoot(false)
 	r.Init()
 	r.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 
