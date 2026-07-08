@@ -124,6 +124,12 @@ type ambientModule struct {
 	hotfixFlashUntil time.Time
 	editingHotfix    bool
 
+	// desk pet
+	petIdx     int // Index in pets (0 = none)
+	pickingPet bool
+	petCursor  int
+	petM       petMotion
+
 	// weather
 	weatherCfg      config.WeatherConfig
 	weatherLine     string
@@ -159,6 +165,7 @@ func New(p *audio.Player) *ambientModule {
 	m.showClock = !st.Ambient.HideClock
 	m.clock24 = !st.Ambient.Clock12
 	m.autoRotate = st.Ambient.Rotate
+	m.petIdx = petIndexByName(st.Ambient.Pet)
 	for i, sc := range scenes {
 		if sc.name() == st.Ambient.Scene {
 			m.style = i
@@ -182,6 +189,20 @@ func (m *ambientModule) setDvdLogo(text string) {
 	}
 }
 
+// petState bündelt die Live-Signale für das Pet (und die Picker-Vorschau).
+func (m *ambientModule) petState() petState {
+	s := petState{
+		frame:   m.frame,
+		playing: m.nowPlaying() != "",
+		level:   avgLevels(m.specLevels),
+		night:   isNight(time.Now().Hour()),
+	}
+	if m.petIdx > 0 {
+		s.moving = petMoving(m.petM, pets[m.petIdx])
+	}
+	return s
+}
+
 // persistPrefsCmd speichert die Ambient-Vorlieben (merge; Idle-Felder bleiben).
 func (m *ambientModule) persistPrefsCmd() tea.Cmd {
 	cfg := m.cfg
@@ -189,6 +210,10 @@ func (m *ambientModule) persistPrefsCmd() tea.Cmd {
 	cfg.HideClock = !m.showClock
 	cfg.Clock12 = !m.clock24
 	cfg.Rotate = m.autoRotate
+	cfg.Pet = ""
+	if m.petIdx > 0 {
+		cfg.Pet = pets[m.petIdx].name
+	}
 	m.cfg = cfg
 	return func() tea.Msg {
 		_ = config.Update(func(s *config.State) { s.Ambient = cfg })
@@ -281,6 +306,9 @@ func (m *ambientModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 		if m.player != nil {
 			m.sampleSpectrum()
 		}
+		if m.petIdx > 0 {
+			stepPet(&m.petM, pets[m.petIdx], m.petState(), m.rng, m.width)
+		}
 		cmds := []tea.Cmd{ambientTick()}
 		if m.autoRotate {
 			m.rotateCounter++
@@ -309,6 +337,9 @@ func (m *ambientModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 		m.showClock = !st.Ambient.HideClock
 		m.clock24 = !st.Ambient.Clock12
 		m.autoRotate = st.Ambient.Rotate
+		if idx := petIndexByName(st.Ambient.Pet); idx != m.petIdx {
+			m.petIdx, m.petM = idx, petMotion{}
+		}
 		for i, sc := range m.scenes {
 			if sc.name() == st.Ambient.Scene {
 				m.style = i
@@ -370,6 +401,28 @@ func (m *ambientModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 			return m, cmd
 		}
 
+		// Pet-Picker hat Vorrang (nach dem Editor).
+		if m.pickingPet {
+			switch k {
+			case "up", "k":
+				if m.petCursor > 0 {
+					m.petCursor--
+				}
+			case "down", "j":
+				if m.petCursor < len(pets)-1 {
+					m.petCursor++
+				}
+			case "enter":
+				m.petIdx = m.petCursor
+				m.petM = petMotion{} // neues Pet startet frisch in der Ecke
+				m.pickingPet = false
+				return m, m.persistPrefsCmd()
+			case "esc", "q", "p":
+				m.pickingPet = false
+			}
+			return m, nil
+		}
+
 		if m.showHelp {
 			if k == "esc" || k == "?" || k == "q" {
 				m.showHelp = false
@@ -421,6 +474,9 @@ func (m *ambientModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 			m.editInput.CursorEnd()
 			m.editInput.Focus()
 			return m, textinput.Blink
+		case "p":
+			m.pickingPet = true
+			m.petCursor = m.petIdx
 		}
 	}
 	return m, nil
@@ -624,6 +680,10 @@ func (m *ambientModule) View(width, height int) string {
 	if m.editing {
 		return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, m.locationEditorView())
 	}
+	if m.pickingPet {
+		return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center,
+			petPickerView(m.petCursor, m.petState()))
+	}
 	if m.showHelp {
 		return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, m.helpView())
 	}
@@ -636,6 +696,10 @@ func (m *ambientModule) View(width, height int) string {
 	if m.showClock {
 		m.drawClock(g)
 	}
+	if m.petIdx > 0 {
+		drawPet(g, pets[m.petIdx], m.petState(), m.petM)
+	}
+	// Kiosk-Overlays nach dem Pet zeichnen, damit sie bei Überlappung gewinnen.
 	if m.player != nil && time.Now().Before(m.volFlashUntil) {
 		m.drawVolumeOverlay(g)
 	}
@@ -650,7 +714,7 @@ func (m *ambientModule) View(width, height int) string {
 	if m.autoRotate {
 		scene += " ↻"
 	}
-	hint := "space: scene · r: rotate · c: clock · w: location · ?: help · esc   (" +
+	hint := "space: scene · r: rotate · c: clock · p: pet · w: location · ?: help · esc   (" +
 		scene + ")"
 	g.stampText(centerX(width, hint), height-1, hint, ui.ColDim)
 
@@ -805,6 +869,7 @@ func (m *ambientModule) helpView() string {
 			{"r", "auto-rotate scenes"},
 			{"c", "toggle clock"},
 			{"h", "12 / 24-hour clock"},
+			{"p", "choose a desk pet"},
 			{"w", "set weather location (city / auto)"},
 			{"esc / q", "back to dashboard"},
 			{"?", "toggle this help"},
