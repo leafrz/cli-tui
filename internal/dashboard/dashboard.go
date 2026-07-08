@@ -13,6 +13,7 @@ import (
 
 	"github.com/leafrz/dashboard/internal/audio"
 	"github.com/leafrz/dashboard/internal/modules/ambient"
+	"github.com/leafrz/dashboard/internal/modules/hosts"
 	"github.com/leafrz/dashboard/internal/modules/radio"
 	"github.com/leafrz/dashboard/internal/modules/settings"
 	"github.com/leafrz/dashboard/internal/modules/sysmon"
@@ -97,6 +98,7 @@ func NewRoot() *rootModel {
 			{icon: "📊", name: "system monitor", desc: "cpu · memory · disk · network", module: sysmon.New()},
 			{icon: "🌌", name: "ambient", desc: "screensaver + clock + weather", module: ambient.New(player)},
 			{icon: "✓", name: "todo", desc: "tasks & checklist", module: todo.New()},
+			{icon: "⇄", name: "ssh hosts", desc: "saved hosts · status · connect", module: hosts.New()},
 			{icon: "⚙", name: "settings", desc: "theme · header · weather · screensaver", module: settings.New()},
 			{icon: "☀", name: "weather", desc: "coming soon", module: nil},
 		},
