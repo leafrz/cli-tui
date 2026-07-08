@@ -13,6 +13,10 @@ func TestAmbientRender(t *testing.T) {
 	const w, h = 80, 24
 	m := New(audio.NewPlayer())
 	m.width, m.height = w, h
+	// New() lädt die echte User-Config -> Vorbedingungen explizit setzen,
+	// statt sie vom Zustand der state.json abhängen zu lassen.
+	m.showClock = true
+	m.petIdx = 0
 
 	for style := 0; style < len(m.scenes); style++ {
 		m.style = style
