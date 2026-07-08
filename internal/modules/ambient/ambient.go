@@ -82,10 +82,13 @@ type star struct{ x, y, z float64 }
 
 // --- messages --------------------------------------------------------------
 
-type ambientTickMsg time.Time
+// ambientTickMsg trägt die Generation des Ticker-Loops; nach erneutem Focus
+// verworfene Loops (z.B. wenn ein Idle-Wakeup den vorigen ohne core.GoToLauncher
+// beendet hat) laufen so nicht doppelt oder für immer eingefroren weiter.
+type ambientTickMsg struct{ gen int }
 
-func ambientTick() tea.Cmd {
-	return tea.Tick(90*time.Millisecond, func(t time.Time) tea.Msg { return ambientTickMsg(t) })
+func ambientTick(gen int) tea.Cmd {
+	return tea.Tick(90*time.Millisecond, func(time.Time) tea.Msg { return ambientTickMsg{gen} })
 }
 
 // --- module ----------------------------------------------------------------
@@ -100,7 +103,7 @@ type ambientModule struct {
 	autoRotate    bool
 	rotateCounter int
 	showHelp      bool
-	ticking       bool
+	gen           int // Ticker-Generation (siehe ambientTickMsg)
 
 	rng        *rand.Rand
 	scenes     []scene
@@ -290,17 +293,20 @@ func (m *ambientModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 		return m, nil
 
 	case core.FocusMsg:
-		cmds := []tea.Cmd{}
-		if !m.ticking {
-			m.ticking = true
-			cmds = append(cmds, ambientTick())
-		}
+		// Immer (neu) starten statt per Bool zu bewachen: so bleibt kein Loop
+		// hängen, falls das vorige Verlassen (z.B. Idle-Wakeup) ambient.Update
+		// nie mit dem "esc"-Key erreicht hat.
+		m.gen++
+		cmds := []tea.Cmd{ambientTick(m.gen)}
 		if c := m.maybeWeather(); c != nil {
 			cmds = append(cmds, c)
 		}
 		return m, tea.Batch(cmds...)
 
 	case ambientTickMsg:
+		if msg.gen != m.gen {
+			return m, nil // veralteter Loop nach erneutem Focus
+		}
 		m.frame++
 		m.advance()
 		if m.player != nil {
@@ -309,7 +315,7 @@ func (m *ambientModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 		if m.petIdx > 0 {
 			stepPet(&m.petM, pets[m.petIdx], m.petState(), m.rng, m.width)
 		}
-		cmds := []tea.Cmd{ambientTick()}
+		cmds := []tea.Cmd{ambientTick(m.gen)}
 		if m.autoRotate {
 			m.rotateCounter++
 			if m.rotateCounter >= 333 { // ~30s bei 90ms
@@ -446,7 +452,6 @@ func (m *ambientModule) Update(msg tea.Msg) (core.Module, tea.Cmd) {
 				return m, textinput.Blink
 			}
 		case "esc", "q", "backspace":
-			m.ticking = false
 			return m, core.GoToLauncher
 		case "?":
 			m.showHelp = true
