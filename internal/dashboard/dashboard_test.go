@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -22,6 +23,37 @@ func TestHeaderTickAdvances(t *testing.T) {
 	}
 	if cmd == nil {
 		t.Error("Header-Tick armiert nicht neu (nil cmd)")
+	}
+}
+
+// TestThemeFlashFades: ctrl+p zeigt den Theme-Namen im Header und der Fade
+// zählt über die Flash-Ticks bis auf null herunter.
+func TestThemeFlashFades(t *testing.T) {
+	r := NewRoot()
+	r.Init()
+	r.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	m, cmd := r.Update(tea.KeyMsg{Type: tea.KeyCtrlP})
+	rr := m.(*rootModel)
+	if rr.themeFlashT != themeFlashTotal {
+		t.Fatalf("themeFlashT = %d, want %d", rr.themeFlashT, themeFlashTotal)
+	}
+	if cmd == nil {
+		t.Fatal("ctrl+p gab keinen Cmd zurück (Flash-Tick fehlt)")
+	}
+	if !strings.Contains(rr.headerView(), rr.theme) {
+		t.Errorf("Header zeigt Theme-Namen %q nicht", rr.theme)
+	}
+
+	for i := 0; i < themeFlashTotal; i++ {
+		m, _ = rr.Update(themeFlashTickMsg{})
+		rr = m.(*rootModel)
+	}
+	if rr.themeFlashT != 0 {
+		t.Errorf("Flash läuft nicht aus: themeFlashT = %d", rr.themeFlashT)
+	}
+	if strings.Contains(rr.headerView(), "◈") {
+		t.Error("Flash-Marker nach Ablauf noch im Header")
 	}
 }
 
