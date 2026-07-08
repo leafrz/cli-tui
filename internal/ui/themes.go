@@ -79,6 +79,56 @@ var themes = []themeDef{
 		cream: "#c8ffc8", mauve: "#66ff66", purple: "#2a7a2a", teal: "#55ff88",
 		peach: "#99ff99", dim: "#3f7f3f", faint: "#123512", errorC: "#ff6b6b", good: "#66ff66",
 	},
+	{
+		name:  "synthwave",
+		cream: "#f2e9f7", mauve: "#ff7edb", purple: "#6d5a9c", teal: "#36f9f6",
+		peach: "#fede5d", dim: "#8d80b0", faint: "#34294f", errorC: "#fe4450", good: "#72f1b8",
+	},
+	{
+		name:  "sakura",
+		cream: "#f5e6ea", mauve: "#e8a0bf", purple: "#9c7086", teal: "#a8c6c2",
+		peach: "#f0c39a", dim: "#96788a", faint: "#3d2b34", errorC: "#d17b88", good: "#a9c49a",
+	},
+	{
+		name:  "amber",
+		cream: "#f5d7a3", mauve: "#ffb000", purple: "#8a6c33", teal: "#d9a441",
+		peach: "#ffc46b", dim: "#a07f45", faint: "#3d2f14", errorC: "#e06c55", good: "#c8b458",
+	},
+	{
+		name:  "ocean",
+		cream: "#d8e6ee", mauve: "#8fb8d8", purple: "#4e6a80", teal: "#6fc3c9",
+		peach: "#d9a97c", dim: "#6c8598", faint: "#1e3240", errorC: "#c97b7b", good: "#8fbf9a",
+	},
+	{
+		name:  "cyberpunk",
+		cream: "#f2f0e4", mauve: "#ff2a6d", purple: "#4a4a68", teal: "#00e5e5",
+		peach: "#fcee0a", dim: "#8a8aa0", faint: "#2b2b3a", errorC: "#ff3f3f", good: "#39ff88",
+	},
+	{
+		name:  "lava",
+		cream: "#f2ded2", mauve: "#ff6b4a", purple: "#8a4a3c", teal: "#c98a6a",
+		peach: "#ffa040", dim: "#9a7a6e", faint: "#3a201a", errorC: "#ff4530", good: "#b0b060",
+	},
+	{
+		name:  "aurora",
+		cream: "#e2f0ea", mauve: "#b48ce8", purple: "#4a6a5a", teal: "#4ee6b8",
+		peach: "#eda0b0", dim: "#7a9a8e", faint: "#1e3a30", errorC: "#e07070", good: "#63e6a0",
+	},
+	{
+		name:  "grape",
+		cream: "#ece4f5", mauve: "#c890f0", purple: "#6a4a8a", teal: "#7ee0d0",
+		peach: "#e0a860", dim: "#9a86b0", faint: "#32284a", errorC: "#e06888", good: "#98d080",
+	},
+	{
+		name:  "citrus",
+		cream: "#f2f0dc", mauve: "#ffb020", purple: "#6a7a3a", teal: "#50d0a0",
+		peach: "#c8e838", dim: "#96a075", faint: "#333a1e", errorC: "#f05840", good: "#a0e040",
+	},
+	{
+		name:  "flamingo",
+		cream: "#faeae8", mauve: "#ff6f9c", purple: "#8a5068", teal: "#50c8c0",
+		peach: "#ffb080", dim: "#a8808e", faint: "#402630", errorC: "#ff5060", good: "#80cc88",
+	},
 }
 
 // ThemeNames liefert alle Theme-Namen in Reihenfolge.

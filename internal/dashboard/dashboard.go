@@ -37,6 +37,33 @@ func idleTick() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg { return idleTickMsg(t) })
 }
 
+// themeFlashTickMsg treibt den Fade des Theme-Namens nach ctrl+p.
+type themeFlashTickMsg struct{}
+
+// themeFlashTotal Ticks à 120ms ≈ 2s: schnelles Fade-in, Hold, Fade-out.
+const themeFlashTotal = 16
+
+func themeFlashTick() tea.Cmd {
+	return tea.Tick(120*time.Millisecond, func(time.Time) tea.Msg { return themeFlashTickMsg{} })
+}
+
+// themeFlashColor bildet die verbleibenden Ticks auf die Fade-Rampe ab.
+func themeFlashColor(remaining int) lipgloss.Color {
+	elapsed := themeFlashTotal - remaining
+	switch {
+	case elapsed == 0:
+		return ui.ColDim // Fade-in (1 Tick reicht, das Auge ist beim Themewechsel eh da)
+	case remaining <= 2:
+		return ui.ColFaint
+	case remaining <= 4:
+		return ui.ColDim
+	case remaining <= 6:
+		return ui.ColCream
+	default:
+		return ui.ColPeach // Hold, hell
+	}
+}
+
 // launcherEntry ist ein Eintrag im Startmenü. module == nil => "coming soon".
 type launcherEntry struct {
 	icon   string
@@ -62,6 +89,8 @@ type rootModel struct {
 
 	header      config.HeaderConfig
 	headerFrame int
+
+	themeFlashT int // verbleibende Fade-Ticks der Theme-Anzeige (0 = aus)
 
 	// In-App Header-Editor
 	editing   bool
@@ -158,6 +187,15 @@ func (r *rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		r.headerFrame++
 		return r, headerTickCmd(r.header.Animated())
 
+	case themeFlashTickMsg:
+		if r.themeFlashT > 0 {
+			r.themeFlashT--
+			if r.themeFlashT > 0 {
+				return r, themeFlashTick()
+			}
+		}
+		return r, nil
+
 	case idleTickMsg:
 		if r.idleTimeout > 0 && r.ambientIdx >= 0 && !r.idleActive && !r.editing &&
 			r.active != r.ambientIdx && time.Since(r.lastInput) > r.idleTimeout {
@@ -253,7 +291,12 @@ func (r *rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+p":
 			r.theme = ui.NextThemeName(r.theme)
 			ui.ApplyTheme(ui.ThemeByName(r.theme))
-			return r, tea.Batch(r.saveThemeCmd(), core.ThemeChanged)
+			cmds := []tea.Cmd{r.saveThemeCmd(), core.ThemeChanged}
+			if r.themeFlashT <= 0 {
+				cmds = append(cmds, themeFlashTick()) // Loop nur starten, wenn keiner läuft
+			}
+			r.themeFlashT = themeFlashTotal
+			return r, tea.Batch(cmds...)
 
 		// Globale Media-Tasten (aus jedem Modul): Pause + Volume.
 		case "ctrl+@", "ctrl+ ": // ctrl+space
@@ -462,13 +505,21 @@ func (r *rootModel) headerView() string {
 
 	clock := ui.ClockStyle.Render(time.Now().Format("15:04"))
 
-	spacerW := r.width - lipgloss.Width(left) - lipgloss.Width(clock) - 2
+	// Theme-Flash: Name des frisch gewählten Themes, fadet neben der Uhr aus.
+	flash := ""
+	if r.themeFlashT > 0 {
+		flash = lipgloss.NewStyle().Foreground(themeFlashColor(r.themeFlashT)).
+			Render("◈ "+r.theme) + "   "
+	}
+
+	spacerW := r.width - lipgloss.Width(left) - lipgloss.Width(flash) - lipgloss.Width(clock) - 2
 	if spacerW < 1 {
 		spacerW = 1
 	}
 	bar := lipgloss.JoinHorizontal(lipgloss.Bottom,
 		left,
 		lipgloss.NewStyle().Width(spacerW).Render(""),
+		flash,
 		clock,
 	)
 
